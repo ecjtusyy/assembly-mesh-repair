@@ -1,177 +1,272 @@
 # -*- coding: utf-8 -*-
-"""
-顶点焊接与跨零件边/点拼接的辅助函数。
+"""Topology-preserving cleanup utilities.
+
+This module contains the new Python-side welding and cleanup path used before and after
+CGAL autorefinement. The old teaching-only stitch / split / T-junction route is no
+longer on the main repair path.
 """
 
-from typing import List, Dict, Tuple
+from __future__ import annotations
+
+from dataclasses import dataclass
+from itertools import product
+from typing import Dict, Iterable, Iterator, List, Sequence, Tuple
+
 import numpy as np
-from utils.spatial_hash import SpatialHash
+
+from mesh.mesh import Mesh
 
 
-def vertex_weld(mesh, eps_v: float) -> None:
-    """
-    在单个网格内进行“顶点焊接（合并近重复点）”。
+@dataclass
+class CleanupReport:
+    V_before: int
+    V_after: int
+    F_before: int
+    F_after: int
+    merged_vertices: int = 0
+    degenerate_removed: int = 0
+    duplicate_removed: int = 0
+    isolated_removed: int = 0
 
-    参数
-    ----
-    mesh : Mesh
-        具有 .V (N x 3 顶点坐标) 与 .F (M x 3 面索引) 的网格对象。
-        需要提供 mesh.mark_dirty() 方法以在拓扑/几何变化后做缓存失效。
-    eps_v : float
-        顶点焊接的容差（相对或绝对，取决于你的调用约定）。
-        两个点之间的欧氏距离 <= eps_v 即认为是“同一点”。
-
-    结果
-    ----
-    直接修改 mesh.V 与 mesh.F：
-    - 近重复点将被合并
-    - 面的索引会被重映射到新的点集
-    - 无用的顶点会被移除
-    """
-    V, F = mesh.V, mesh.F
-
-    # 安全检查：空网格直接返回
-    if V.shape[0] == 0:
-        return
-
-    # 1) 使用空间哈希，将每个点放入以 cell=eps_v 为边长的格子中，加速近邻查询
-    sh = SpatialHash(cell=eps_v)
-    for vid in range(V.shape[0]):
-        sh.insert(vid, V[vid])
-
-    # 2) parent[i] 表示 i 顶点应当被合并到的“代表点”索引
-    #    这里采用“取邻域内较小索引”的简单并查集思路（非严格并查集，足够演示）
-    parent = np.arange(V.shape[0], dtype=np.int32)
-
-    for i in range(V.shape[0]):
-        # 在半径 eps_v 内查找候选近邻
-        neighbors = sh.query_ball(V[i], radius=eps_v)
-
-        # root 记录 i 的代表点，初始设为自己
-        root = i
-        for j in neighbors:
-            if j == i:
-                continue
-            # 真正再做一次距离判断，过滤哈希误报
-            if np.linalg.norm(V[j] - V[i]) <= eps_v:
-                # 为了确定性和简化，这里选择较小的索引作为代表
-                root = min(root, j)
-        parent[i] = root
-
-    # 3) 压缩 parent（让 parent[i] 直接指向最终代表点）
-    for i in range(V.shape[0]):
-        parent[i] = parent[parent[i]]
-
-    # 4) 根据 parent 构造新的点集与面索引映射
-    #    np.unique(parent, return_inverse=True) 会返回“代表点列表 uniq”
-    #    和“每个旧点对应代表点在 uniq 中的索引 inv”
-    uniq, inv = np.unique(parent, return_inverse=True)
-
-    # 新点坐标只保留代表点的坐标
-    V_new = V[uniq]
-    # 面索引用 inv 进行重映射
-    F_new = inv[F]
-
-    # 5) 写回网格并标记失效
-    mesh.V = V_new
-    mesh.F = F_new
-    mesh.mark_dirty()
-
-
-def stitch_edges(mesh_a, mesh_b, eps_e: float) -> None:
-    """
-    跨两个网格的“近重合边拼接/对齐”的占位实现（示意函数）。
-
-    说明
-    ----
-    - 真正稳健的跨件拼接需要处理：共线重叠、端点落在边上、法向一致性、切分长边等。
-    - 这些逻辑较长且容易踩精度坑，出于教学简化，本函数留作占位（TODO）。
-    - 管线中当前策略是：分别对每个网格做 vertex_weld，必要时再做“跨件顶点焊接”。
-
-    参数
-    ----
-    mesh_a, mesh_b : Mesh
-        两个需要在边界对齐/拼接的网格。
-    eps_e : float
-        边对齐的容差（通常与顶点容差同量级或略大）。
-    """
-
-    return
-
-
-def weld_across_parts(meshes: List[Dict[str, np.ndarray]], eps_v: float) -> None:
-    """
-    对“多个零件（多网格）”执行一次“跨件顶点焊接”。
-    参数
-    ----
-    meshes : List[Dict]
-        形如 [{"V": (Ni x 3), "F": (Mi x 3)}, ...] 的列表。
-        注意：这是一个与项目 Mesh 类“解耦”的极简数据结构，方便教学。
-    eps_v : float
-        顶点焊接容差。
-    """
-    # 1) 收集所有 V/F，并记录偏移量，方便把各零件的 F 平移到同一全局索引空间
-    Vs = [m["V"] for m in meshes]
-    Fs = [m["F"] for m in meshes]
-
-    # offsets[i] 表示第 i 个零件的顶点在串接数组中的起始偏移
-    offsets = np.cumsum([0] + [V.shape[0] for V in Vs[:-1]]).tolist()
-
-    # 串接所有顶点
-    V_cat = np.vstack(Vs)
-
-    # 串接所有面（在面索引上加上对应顶点偏移）
-    F_cat_list = []
-    for i, F in enumerate(Fs):
-        F_cat_list.append(F + offsets[i])
-    F_cat = np.vstack(F_cat_list)
-
-    # 2) 用项目内的 Mesh 类做一次统一焊接
-    from mesh.mesh import Mesh
-    tmp_mesh = Mesh(V_cat, F_cat)
-    vertex_weld(tmp_mesh, eps_v)
-
-    # 3) 将焊接后的结果“拆回去”
-    # 这里采用一种非常粗糙的做法：仍然按“原每个零件面数”切片。
-    # 好处：简单且与演示一致；坏处：跨件共享的顶点缓冲会被所有零件“共享引用”，
-    #       这在真实项目里基本不可接受（零件边界与属性会混乱）。
-    V_cat_after = tmp_mesh.V
-    F_cat_after = tmp_mesh.F
-
-    start = 0
-    for i, m in enumerate(meshes):
-        face_count = m["F"].shape[0]
-        faces_i = F_cat_after[start:start + face_count]
-        start += face_count
-
-        # 直接把“全局顶点缓冲 V_cat_after”与“该零件对应的一段面 faces_i”写回。
-        # 注意：这会让所有零件共享同一个 V 缓冲，只是教学用法。
-        meshes[i] = {
-            "V": V_cat_after.copy(),
-            "F": faces_i.copy()
+    def as_dict(self) -> dict:
+        return {
+            "V_before": self.V_before,
+            "V_after": self.V_after,
+            "F_before": self.F_before,
+            "F_after": self.F_after,
+            "merged_vertices": self.merged_vertices,
+            "degenerate_removed": self.degenerate_removed,
+            "duplicate_removed": self.duplicate_removed,
+            "isolated_removed": self.isolated_removed,
         }
 
 
-def edge_align_placeholder(mesh, eps_e: float) -> None:
+class _UnionFind:
+    def __init__(self, n: int) -> None:
+        self.parent = np.arange(n, dtype=np.int64)
+        self.rank = np.zeros(n, dtype=np.int8)
+
+    def find(self, x: int) -> int:
+        parent = self.parent
+        while parent[x] != x:
+            parent[x] = parent[parent[x]]
+            x = int(parent[x])
+        return x
+
+    def union(self, a: int, b: int) -> int:
+        ra = self.find(a)
+        rb = self.find(b)
+        if ra == rb:
+            return ra
+        # Deterministic: smaller representative wins when ranks tie.
+        if self.rank[ra] < self.rank[rb] or (self.rank[ra] == self.rank[rb] and ra > rb):
+            ra, rb = rb, ra
+        self.parent[rb] = ra
+        if self.rank[ra] == self.rank[rb]:
+            self.rank[ra] += 1
+        return ra
+
+
+_NEIGHBOR_OFFSETS = tuple(product((-1, 0, 1), repeat=3))
+
+
+
+def _bbox_diag(V: np.ndarray) -> float:
+    if V.size == 0:
+        return 0.0
+    lo = V.min(axis=0)
+    hi = V.max(axis=0)
+    return float(np.linalg.norm(hi - lo))
+
+
+
+def area_threshold_from_mesh(mesh: Mesh) -> float:
+    diag = _bbox_diag(mesh.V)
+    if diag == 0.0:
+        return 0.0
+    return float(np.finfo(np.float64).eps * diag * diag)
+
+
+
+def face_key(face: Sequence[int]) -> Tuple[int, int, int]:
+    """Canonical duplicate key ignoring winding."""
+    a, b, c = (int(face[0]), int(face[1]), int(face[2]))
+    return tuple(sorted((a, b, c)))
+
+
+
+def _iter_neighbor_cells(cell: Tuple[int, int, int]) -> Iterator[Tuple[int, int, int]]:
+    cx, cy, cz = cell
+    for dx, dy, dz in _NEIGHBOR_OFFSETS:
+        yield (cx + dx, cy + dy, cz + dz)
+
+
+
+def vertex_weld(mesh: Mesh, eps_v: float) -> np.ndarray:
+    """Weld duplicate / near-duplicate vertices and remap all faces.
+
+    Returns ``old2new_map`` mapping the original vertex indices to the retained compacted
+    vertex indices.
     """
-    “边对齐”占位函数。
+    V = np.asarray(mesh.V, dtype=np.float64)
+    F = np.asarray(mesh.F, dtype=np.int64)
+    n = int(V.shape[0])
+    if n == 0:
+        return np.zeros((0,), dtype=np.int64)
+    if eps_v < 0:
+        raise ValueError(f"eps_v must be >= 0, got {eps_v}")
+    if eps_v == 0:
+        uniq, inverse = np.unique(V, axis=0, return_inverse=True)
+        mesh.V = uniq.astype(np.float64, copy=False)
+        mesh.F = inverse[F] if F.size else F.copy()
+        mesh.mark_dirty()
+        return inverse.astype(np.int64, copy=False)
 
-    想做什么？
-    ----------
-    - 识别“共线且重叠”的边段；
-    - 将较长的边在另一边的端点处**插入新顶点**，从而实现边的对齐；
-    - 这样可以减少 T 形连接（T-junction），为流形化创造条件。
+    uf = _UnionFind(n)
+    buckets: Dict[Tuple[int, int, int], List[int]] = {}
 
-    为什么暂不实现？
-    ----------------
-    - 稳健的实现需要精确谓词、鲁棒的共线/共面判定与拓扑更新；
-    - 本项目以“教学最小闭环”为主，留作 TODO。
+    for i, p in enumerate(V):
+        key = tuple(np.floor(p / eps_v).astype(np.int64).tolist())
+        for neighbor_key in _iter_neighbor_cells(key):
+            for j in buckets.get(neighbor_key, []):
+                if np.linalg.norm(p - V[j]) <= eps_v:
+                    uf.union(i, j)
+        buckets.setdefault(key, []).append(i)
 
-    参数
-    ----
-    mesh : Mesh
-        需要进行边对齐处理的网格。
-    eps_e : float
-        共线重叠判定的容差。
-    """
-    return
+    roots = np.array([uf.find(i) for i in range(n)], dtype=np.int64)
+    root_to_rep: Dict[int, int] = {}
+    for i, r in enumerate(roots.tolist()):
+        rep = root_to_rep.get(r)
+        if rep is None or i < rep:
+            root_to_rep[r] = i
+    reps = np.array(sorted(root_to_rep.values()), dtype=np.int64)
+    rep_to_new = {int(rep): idx for idx, rep in enumerate(reps.tolist())}
+
+    old2new = np.empty((n,), dtype=np.int64)
+    for i in range(n):
+        rep = root_to_rep[int(roots[i])]
+        old2new[i] = rep_to_new[int(rep)]
+
+    mesh.V = V[reps]
+    mesh.F = old2new[F] if F.size else F.copy()
+    mesh.mark_dirty()
+    return old2new
+
+
+
+def remove_degenerate_faces(mesh: Mesh, area_eps: float | None = None) -> int:
+    """Remove faces with repeated indices or near-zero area."""
+    F = np.asarray(mesh.F, dtype=np.int64)
+    if F.size == 0:
+        return 0
+    V = np.asarray(mesh.V, dtype=np.float64)
+    if area_eps is None:
+        area_eps = area_threshold_from_mesh(mesh)
+
+    keep_mask = np.ones((F.shape[0],), dtype=bool)
+    for i, tri in enumerate(F):
+        a, b, c = int(tri[0]), int(tri[1]), int(tri[2])
+        if a == b or b == c or a == c:
+            keep_mask[i] = False
+            continue
+        pa, pb, pc = V[a], V[b], V[c]
+        area2 = np.linalg.norm(np.cross(pb - pa, pc - pa))
+        if not np.isfinite(area2) or area2 <= 2.0 * area_eps:
+            keep_mask[i] = False
+
+    removed = int((~keep_mask).sum())
+    if removed:
+        mesh.F = F[keep_mask]
+        mesh.mark_dirty()
+    return removed
+
+
+
+def remove_duplicate_faces(mesh: Mesh) -> int:
+    """Remove duplicate triangles using a canonical key that ignores winding."""
+    F = np.asarray(mesh.F, dtype=np.int64)
+    if F.size == 0:
+        return 0
+    keep_indices: List[int] = []
+    seen: Dict[Tuple[int, int, int], int] = {}
+    for i, tri in enumerate(F):
+        key = face_key(tri)
+        if key in seen:
+            continue
+        seen[key] = i
+        keep_indices.append(i)
+    removed = int(F.shape[0] - len(keep_indices))
+    if removed:
+        mesh.F = F[np.asarray(keep_indices, dtype=np.int64)]
+        mesh.mark_dirty()
+    return removed
+
+
+
+def compact_vertices(mesh: Mesh) -> np.ndarray:
+    """Remove isolated vertices and compact face indices to ``[0, n)``."""
+    V = np.asarray(mesh.V, dtype=np.float64)
+    F = np.asarray(mesh.F, dtype=np.int64)
+    if V.size == 0:
+        return np.zeros((0,), dtype=np.int64)
+    old2new = np.full((V.shape[0],), -1, dtype=np.int64)
+    if F.size == 0:
+        mesh.V = np.zeros((0, 3), dtype=np.float64)
+        mesh.F = np.zeros((0, 3), dtype=np.int64)
+        mesh.mark_dirty()
+        return old2new
+
+    used = np.unique(F.reshape(-1))
+    old2new[used] = np.arange(used.shape[0], dtype=np.int64)
+    mesh.V = V[used]
+    mesh.F = old2new[F]
+    mesh.mark_dirty()
+    return old2new
+
+
+
+def cleanup_topology(mesh: Mesh, eps_v: float = 0.0, area_eps: float | None = None) -> CleanupReport:
+    """Run the non-moving cleanup sequence used by the new main pipeline."""
+    report = CleanupReport(
+        V_before=mesh.num_vertices,
+        V_after=mesh.num_vertices,
+        F_before=mesh.num_faces,
+        F_after=mesh.num_faces,
+    )
+    old2new = vertex_weld(mesh, eps_v=eps_v)
+    report.merged_vertices = int(report.V_before - mesh.num_vertices)
+    report.degenerate_removed = remove_degenerate_faces(mesh, area_eps=area_eps)
+    report.duplicate_removed = remove_duplicate_faces(mesh)
+    before_compact = mesh.num_vertices
+    compact_vertices(mesh)
+    report.isolated_removed = int(before_compact - mesh.num_vertices)
+    report.V_after = mesh.num_vertices
+    report.F_after = mesh.num_faces
+    return report
+
+
+
+def mesh_has_duplicate_faces(mesh: Mesh) -> bool:
+    F = np.asarray(mesh.F, dtype=np.int64)
+    if F.size == 0:
+        return False
+    return len({face_key(tri) for tri in F}) != int(F.shape[0])
+
+
+
+def mesh_has_degenerate_faces(mesh: Mesh, area_eps: float | None = None) -> bool:
+    V = np.asarray(mesh.V, dtype=np.float64)
+    F = np.asarray(mesh.F, dtype=np.int64)
+    if F.size == 0:
+        return False
+    if area_eps is None:
+        area_eps = area_threshold_from_mesh(mesh)
+    for tri in F:
+        a, b, c = (int(tri[0]), int(tri[1]), int(tri[2]))
+        if len({a, b, c}) != 3:
+            return True
+        pa, pb, pc = V[a], V[b], V[c]
+        area2 = np.linalg.norm(np.cross(pb - pa, pc - pa))
+        if not np.isfinite(area2) or area2 <= 2.0 * area_eps:
+            return True
+    return False

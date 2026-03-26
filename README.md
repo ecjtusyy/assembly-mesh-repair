@@ -1,221 +1,171 @@
-# 🧩 Assembly Mesh Non-manifold Repair
+# assembly-mesh-repair (Python + CGAL bridge prototype)
 
-**——装配网格非流形修复管线（Octree + TriTri + T-Fix + Stitch + Manifold）**
+This branch migrates the project away from the original teaching-style approximate
+narrow-phase (`tri_tri_intersection` / Python edge splitting / T-junction propagation /
+Laplacian smoothing) and onto the new main path:
 
-一个 **简洁、可读、可扩展** 的教学型项目，用于修复装配网格（Assembly Mesh）在拼接与局部加密（Local Refinement）过程中产生的 **非流形问题**。
+```text
+OBJ -> Python vertex welding / cleanup -> CGAL checker
+    -> CGAL autorefine_triangle_soup (if needed)
+    -> Python cleanup -> CGAL checker -> OBJ
+```
 
+## What this prototype is for
 
----
+Two problem classes are in scope:
 
-## 🚀 管线概览
+1. **Topological errors caused by duplicate / near-duplicate vertices**
+   - weld vertices within `eps_v`
+   - remap all face indices
+   - delete degenerate triangles
+   - delete duplicate triangles
+   - delete isolated vertices and compact indices
 
-| 阶段 | 模块                                           | 功能描述                  |
-| -- | -------------------------------------------- | --------------------- |
-| ①  | **Octree Broad-phase**                       | 构建八叉树，快速筛选潜在相交三角形对    |
-| ②  | **Triangle–Triangle Narrow-phase & Cutting** | 精确检测并在局部进行相交分割        |
-| ③  | **T-junction Fix (Propagation)**             | 修复挂点（T形连接），传播式边拆分     |
-| ④  | **Weld / Stitch**                            | 顶点与边的焊接与拼缝            |
-| ⑤  | **Manifoldization**                          | 拓扑修复，确保边仅属于两面，实现流形化   |
-| ⑥  | **Quality Cleanup**                          | 清除退化面、瘦长三角、重复顶点等低质量结构 |
+2. **Geometric self-intersections in triangle soups**
+   - detect with CGAL triangle soup self-intersection APIs
+   - repair with `CGAL::Polygon_mesh_processing::autorefine_triangle_soup()`
+   - certify the output again with the CGAL checker
 
-> ⚠️ 若要在生产环境使用，请使用**精确几何谓词（exact predicates）**，并补全共面、重叠等复杂情况的处理。
+## First-version scope and limitations
 
----
+- Input: OBJ
+- Output: OBJ
+- Guaranteed records: `v` and `f`
+- `vt`, `vn`, `g`, `o`, `usemtl`, `mtllib`, smoothing groups and custom attributes are
+  ignored in the first version
+- Polygon faces are triangulated by fan triangulation during OBJ import
+- The target guarantee is **triangle-soup self-intersection free according to the CGAL
+  checker**, not full CAD semantic healing
+- Multiple `--input` files are processed independently in the current prototype; cross-file
+  repair is not attempted yet
+- Geometry-moving post-processes such as Laplacian smoothing are intentionally disabled
 
-## 🧠 项目背景
+## Repository layout
 
-在 **装配建模（Assembly Modeling）** 与 **网格细化（Local Refinement）** 的流程中，经常出现以下问题：
+```text
+cgal_bridge/
+  CMakeLists.txt
+  obj_triangle_soup_io.h
+  check_self_intersections.cpp
+  autorefine_obj.cpp
+mesh/
+  io_obj.py
+  mesh.py
+ops/
+  stitch.py          # welding / cleanup / duplicate + degenerate removal
+  cgal_refine.py     # subprocess bridge
+  pipeline_impl.py   # new main pipeline
+geom/
+  intersection.py    # deprecated teaching stub
+  retriangle.py      # deprecated teaching stub
+tests/
+  data/*.obj
+  test_python_cleanup.py
+  run_minimal_regression.sh
+```
 
-* 部件间边界微重叠、缝隙；
-* 顶点落在他人边上形成 **T-junction**；
-* 交叠三角形导致非流形拓扑；
-* 局部细化带来**不一致节点**与**几何裂缝**。
+## Build the CGAL bridge
 
-这些问题会直接影响后续的：
+This repository now vendors the official CGAL 6.1.1 library release under `third_party/CGAL-6.1.1`, and the bridge CMakeLists tries that copy first. On Debian/Ubuntu-like systems you still need the numeric/toolchain dependencies (GMP/MPFR/Boost/CMake/compiler); if `third_party/CGAL-6.1.1` is removed, a system CGAL installation can also satisfy `find_package(CGAL)`.
 
-* 碰撞检测
-* 仿真（FEA/CFD）
-* 曲面重建与CAD反求
-
-本项目提供一条**轻量、可读、可调**的完整修复流程，帮助你快速理解“非流形修复”的核心思想。
-
----
-
-## 🧩 安装与环境
+Recommended dependency install on Debian/Ubuntu-like systems:
 
 ```bash
-git clone <your-repo-url>
-cd <your-repo>
-pip install -r requirements.txt
+apt-get update
+apt-get install -y \
+  build-essential \
+  cmake \
+  libmpfr-dev \
+  libgmp-dev \
+  libboost-program-options-dev \
+  libboost-system-dev \
+  libboost-thread-dev \
+  zlib1g-dev \
+  python3 \
+  python3-pip
 ```
 
-**依赖环境：**
-
-* Python 3.9+
-* numpy 等科学计算库（详见 `requirements.txt`）
-
----
-
-## ⚙️ 快速上手
-
-### 修复两个装配零件
+Then build the bridge:
 
 ```bash
-python pipeline.py --input partA.obj partB.obj --output_dir out
+cmake -S cgal_bridge -B build/cgal
+cmake --build build/cgal -j
 ```
 
-输出：
+This produces two executables:
 
-```
-out/partA_repaired.obj
-out/partB_repaired.obj
-```
+- `build/cgal/check_self_intersections`
+- `build/cgal/autorefine_obj`
 
-### 调整修复容差（相对包围盒对角线）
+## Checker usage
 
 ```bash
-python pipeline.py --input partA.obj partB.obj --output_dir out \
-  --eps_v 1e-6 --eps_e 1e-6 --eps_p 1e-8
+./build/cgal/check_self_intersections tests/data/tri_cross.obj --list_pairs
 ```
 
----
+Expected output format:
 
-## 🧾 参数说明
-
-| 参数             | 含义     | 说明                      |
-| -------------- | ------ | ----------------------- |
-| `--input`      | 输入文件   | 支持多个 `.obj`（三角形）文件      |
-| `--output_dir` | 输出目录   | 每个输入会生成 `_repaired.obj` |
-| `--eps_v`      | 顶点吸附容差 | 用于顶点焊接、合并判断             |
-| `--eps_e`      | 边吸附容差  | 用于边重合、拼接判断              |
-| `--eps_p`      | 相交判定容差 | 控制三角形相交与剪切判定精度          |
-
-> 所有容差均为**相对尺度**，根据输入网格的包围盒对角线进行归一化，保证不同尺寸模型下表现一致。
-
----
-
-## 📥 输入与输出
-
-* **输入**：标准三角形 OBJ 文件
-  （若含多边形，将自动进行 **扇形三角化**）
-* **输出**：每个输入文件生成对应的 `<name>_repaired.obj`
-* **拓扑目标**：生成的网格应为**2-流形（2-manifold）**
-  即每条边恰好被两个面共享；边界可存在，但无非流形连接。
-
----
-
-## 🧰 模块说明
-
-### 1️⃣ Octree Broad-phase
-
-`geom/octree.py`
-构建八叉树加速结构，快速筛选出可能相交的三角形对。
-
-### 2️⃣ Tri-Tri Narrow-phase & Cutting
-
-`geom/intersection.py`, `ops/cut.py`
-检测真实相交并执行局部分割（当前为近似算法，可替换为精确几何谓词）。
-
-### 3️⃣ T-junction Fix
-
-`ops/t_fix.py`
-检测并传播修复 T-junction（顶点落在他人边上）。
-
-### 4️⃣ Weld / Stitch
-
-`ops/stitch.py`
-合并接近的顶点和边；默认允许**跨零件焊接**（可自定义以保留边界）。
-
-### 5️⃣ Manifoldization
-
-`ops/manifold.py`
-确保边邻接关系正确；移除非流形点和退化三角。
-
-### 6️⃣ Quality Cleanup
-
-`ops/quality.py`
-清理悬挂面、极瘦三角形、孤立顶点等，提升网格质量。
-
----
-
-## 🔧 容差调节建议
-
-| 现象             | 建议调整                            |
-| -------------- | ------------------------------- |
-| 交叠未切开 / 孔洞残留   | 增大 `--eps_p`（必要时同时调高 `--eps_e`） |
-| 跨件被误焊接 / 细节被抹平 | 减小 `--eps_v` 与 `--eps_e`        |
-| 出现大量瘦长三角或碎片    | 提高 `--eps_p` 后再执行质量清理           |
-
-> 推荐初始设置：`eps_p < eps_e ≈ eps_v`，逐步微调，每次改动 1/3 数量级。
-
----
-
-## 💡 使用示例
-
-```bash
-# 仅修复局部加密导致的 T-junction
-python pipeline.py --input refined_bracket.obj --output_dir out \
-  --eps_v 5e-7 --eps_e 5e-7 --eps_p 1e-7
-
-# 修复两个装配零件并进行跨件焊接
-python pipeline.py --input housing.obj insert.obj --output_dir out \
-  --eps_v 1e-6 --eps_e 1e-6 --eps_p 1e-7
+```text
+self_intersect=1
+count=1
+pair=0,1
 ```
 
----
-
-## 🧱 扩展方向
-
-| 模块                     | 可扩展内容                                               |
-| ---------------------- | --------------------------------------------------- |
-| `geom/intersection.py` | 替换为 **exact predicates**（Shewchuk / CGAL），处理共面/共线重叠 |
-| `ops/stitch.py`        | 支持“保留部件边界”、“分组焊接”、“对齐后焊接”等策略                        |
-| 数据结构                   | 引入 **Half-edge / Winged-edge** 结构，支持拓扑编辑            |
-| 后处理                    | 增加 **受约束重三角化**、**Delaunay-like 翻边优化**               |
-| 性能优化                   | 并行 BVH / tiled 区域修复                                 |
-
----
-
-## ⚠️ 已知限制
-
-* 当前几何判定为近似算法，对共面或退化情况不完全鲁棒；
-* 长距离共线重叠仅作有限分割处理；
-* 网格质量优化为轻量清理，不替代完整重建。
-
----
-
-## ❓ 常见问题（FAQ）
-
-**Q:** 会改变零件边界吗？
-**A:** 默认允许跨件焊接。若需保持零件边界，请在 `ops/stitch.py` 中添加限制条件。
-
-**Q:** 支持多边形 OBJ 吗？
-**A:** 会自动扇形三角化，仅支持三角面。
-
-**Q:** 不同单位的模型容差会乱吗？
-**A:** 不会。所有容差均基于相对包围盒尺寸归一化，单位无关。
-
----
-
-## 🛠️ 开发路线（Roadmap）
-
-* ✅ 基础 Octree + Tri-Tri 流程
-* 🔄 精确几何谓词与共面检测
-* 🔄 边对齐（共线重叠检测 + 分割）
-* 🔄 Half-edge 拓扑结构与编辑操作
-* 🔄 重三角化与质量翻边
-* 🔄 并行化加速（BVH / tiled 操作）
-
----
-
-## 🧾 简要命令参考
+## Autorefine usage
 
 ```bash
-# 基本用法
-python pipeline.py --input <obj files> --output_dir <out dir>
+./build/cgal/autorefine_obj tests/data/tri_cross.obj tests/out/tri_cross_refined.obj
+./build/cgal/check_self_intersections tests/out/tri_cross_refined.obj --list_pairs
+```
 
-# 详细控制
+`autorefine_obj` always enables `apply_iterative_snap_rounding(true)`.
+
+## Python CLI usage
+
+```bash
 python pipeline.py \
-  --input partA.obj partB.obj \
-  --output_dir out \
-  --eps_v 1e-6 --eps_e 1e-6 --eps_p 1e-8
+  --input tests/data/tri_cross.obj \
+  --output_dir tests/out/tri_cross \
+  --eps_v 1e-9 \
+  --eps_mode relative_bbox \
+  --build_dir build/cgal
+```
+
+Outputs:
+
+- repaired OBJ: `tests/out/tri_cross/tri_cross_repaired.obj`
+- intermediate work files: `tests/out/tri_cross/tri_cross_work/`
+
+## Minimal regression set
+
+The minimal regression assets requested for this prototype are included:
+
+- `tests/data/clean_tri.obj`
+- `tests/data/dup_vertex.obj`
+- `tests/data/tri_cross.obj`
+- `tests/data/shared_point_multi_intersection.obj`
+- `tests/data/mixed_case.obj`
+
+Python-side cleanup tests:
+
+```bash
+python -m unittest tests.test_python_cleanup
+```
+
+Full bridge regression (builds the bridge, runs Python cleanup tests, then runs the full five-case acceptance sweep):
+
+```bash
+bash tests/run_minimal_regression.sh
+```
+
+## Deprecated modules kept only for contrast
+
+The following modules remain in the tree only as explicit deprecated stubs and are not used
+by the production path anymore:
+
+- `geom/intersection.py`
+- `geom/retriangle.py`
+- `ops/t_junction.py`
+- `ops/quality.py`
+
+If they are called directly they raise an error explaining that the CGAL bridge must be used.

@@ -1,0 +1,7 @@
+input_self_intersect=1
+input_points=6
+input_triangles=2
+autorefine_success=1
+output_self_intersect=0
+output_points=7
+output_triangles=7

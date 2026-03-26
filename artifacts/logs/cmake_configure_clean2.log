@@ -1,0 +1,19 @@
+-- The CXX compiler identification is GNU 14.2.0
+-- Detecting CXX compiler ABI info
+-- Detecting CXX compiler ABI info - done
+-- Check for working CXX compiler: /usr/bin/c++ - skipped
+-- Detecting CXX compile features
+-- Detecting CXX compile features - done
+-- Trying vendored CGAL from /mnt/data/assembly-mesh-repair/cgal_bridge/../third_party/CGAL-6.1.1
+-- Targeting Unix Makefiles
+-- Using /usr/bin/c++ compiler.
+-- Boost include dirs: /usr/include
+-- Boost libraries:    
+-- Performing Test CMAKE_HAVE_LIBC_PTHREAD
+-- Performing Test CMAKE_HAVE_LIBC_PTHREAD - Success
+-- Found Threads: TRUE
+-- Using gcc version 4 or later. Adding -frounding-math
+-- Using CGAL 6.1.1
+-- Configuring done (1.6s)
+-- Generating done (0.0s)
+-- Build files have been written to: /mnt/data/assembly-mesh-repair/build/cgal

@@ -1,0 +1,8 @@
+Get:1 https://packages.applied-caas-gateway1.internal.api.openai.org/artifactory/debian-public trixie InRelease
+Get:2 https://packages.applied-caas-gateway1.internal.api.openai.org/artifactory/debian-public trixie-updates InRelease
+Get:3 https://packages.applied-caas-gateway1.internal.api.openai.org/artifactory/debian-public-security trixie-security InRelease
+Get:5 https://packages.applied-caas-gateway1.internal.api.openai.org/artifactory/debian-public trixie-updates/main amd64 Packages [5412 B]
+Get:6 https://packages.applied-caas-gateway1.internal.api.openai.org/artifactory/debian-public-security trixie-security/main amd64 Packages [114 kB]
+Get:4 https://packages.applied-caas-gateway1.internal.api.openai.org/artifactory/debian-public trixie/main amd64 Packages [9671 kB]
+Fetched 10.0 MB in 7s (1457 kB/s)
+Reading package lists...

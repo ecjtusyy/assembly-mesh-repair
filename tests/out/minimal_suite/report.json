@@ -1,0 +1,202 @@
+[
+  {
+    "input": "tests/data/clean_tri.obj",
+    "output": "tests/out/minimal_suite/clean_tri_repaired.obj",
+    "eps_mode": "relative_bbox",
+    "eps_v_input": 1e-09,
+    "eps_v_abs": 1.4142135623730953e-09,
+    "pre_cleanup": {
+      "V_before": 3,
+      "V_after": 3,
+      "F_before": 1,
+      "F_after": 1,
+      "merged_vertices": 0,
+      "degenerate_removed": 0,
+      "duplicate_removed": 0,
+      "isolated_removed": 0
+    },
+    "pre_check": {
+      "self_intersect": false,
+      "count": 0,
+      "pairs": []
+    },
+    "autorefined": false,
+    "post_cleanup": {
+      "V_before": 3,
+      "V_after": 3,
+      "F_before": 1,
+      "F_after": 1,
+      "merged_vertices": 0,
+      "degenerate_removed": 0,
+      "duplicate_removed": 0,
+      "isolated_removed": 0
+    },
+    "post_check": {
+      "self_intersect": false,
+      "count": 0,
+      "pairs": []
+    },
+    "final_vertices": 3,
+    "final_faces": 1
+  },
+  {
+    "input": "tests/data/dup_vertex.obj",
+    "output": "tests/out/minimal_suite/dup_vertex_repaired.obj",
+    "eps_mode": "relative_bbox",
+    "eps_v_input": 1e-09,
+    "eps_v_abs": 1.4142135623730953e-09,
+    "pre_cleanup": {
+      "V_before": 4,
+      "V_after": 3,
+      "F_before": 2,
+      "F_after": 1,
+      "merged_vertices": 1,
+      "degenerate_removed": 0,
+      "duplicate_removed": 1,
+      "isolated_removed": 0
+    },
+    "pre_check": {
+      "self_intersect": false,
+      "count": 0,
+      "pairs": []
+    },
+    "autorefined": false,
+    "post_cleanup": {
+      "V_before": 3,
+      "V_after": 3,
+      "F_before": 1,
+      "F_after": 1,
+      "merged_vertices": 0,
+      "degenerate_removed": 0,
+      "duplicate_removed": 0,
+      "isolated_removed": 0
+    },
+    "post_check": {
+      "self_intersect": false,
+      "count": 0,
+      "pairs": []
+    },
+    "final_vertices": 3,
+    "final_faces": 1
+  },
+  {
+    "input": "tests/data/tri_cross.obj",
+    "output": "tests/out/minimal_suite/tri_cross_repaired.obj",
+    "eps_mode": "relative_bbox",
+    "eps_v_input": 1e-09,
+    "eps_v_abs": 3.4641016151377544e-09,
+    "pre_cleanup": {
+      "V_before": 6,
+      "V_after": 6,
+      "F_before": 2,
+      "F_after": 2,
+      "merged_vertices": 0,
+      "degenerate_removed": 0,
+      "duplicate_removed": 0,
+      "isolated_removed": 0
+    },
+    "pre_check": {
+      "self_intersect": true,
+      "count": 1,
+      "pairs": []
+    },
+    "autorefined": true,
+    "post_cleanup": {
+      "V_before": 7,
+      "V_after": 7,
+      "F_before": 7,
+      "F_after": 7,
+      "merged_vertices": 0,
+      "degenerate_removed": 0,
+      "duplicate_removed": 0,
+      "isolated_removed": 0
+    },
+    "post_check": {
+      "self_intersect": false,
+      "count": 0,
+      "pairs": []
+    },
+    "final_vertices": 7,
+    "final_faces": 7
+  },
+  {
+    "input": "tests/data/shared_point_multi_intersection.obj",
+    "output": "tests/out/minimal_suite/shared_point_multi_intersection_repaired.obj",
+    "eps_mode": "relative_bbox",
+    "eps_v_input": 1e-09,
+    "eps_v_abs": 4.69041575982343e-09,
+    "pre_cleanup": {
+      "V_before": 9,
+      "V_after": 9,
+      "F_before": 3,
+      "F_after": 3,
+      "merged_vertices": 0,
+      "degenerate_removed": 0,
+      "duplicate_removed": 0,
+      "isolated_removed": 0
+    },
+    "pre_check": {
+      "self_intersect": true,
+      "count": 3,
+      "pairs": []
+    },
+    "autorefined": true,
+    "post_cleanup": {
+      "V_before": 16,
+      "V_after": 16,
+      "F_before": 24,
+      "F_after": 24,
+      "merged_vertices": 0,
+      "degenerate_removed": 0,
+      "duplicate_removed": 0,
+      "isolated_removed": 0
+    },
+    "post_check": {
+      "self_intersect": false,
+      "count": 0,
+      "pairs": []
+    },
+    "final_vertices": 16,
+    "final_faces": 24
+  },
+  {
+    "input": "tests/data/mixed_case.obj",
+    "output": "tests/out/minimal_suite/mixed_case_repaired.obj",
+    "eps_mode": "relative_bbox",
+    "eps_v_input": 1e-09,
+    "eps_v_abs": 3.4641016151377544e-09,
+    "pre_cleanup": {
+      "V_before": 7,
+      "V_after": 6,
+      "F_before": 3,
+      "F_after": 2,
+      "merged_vertices": 1,
+      "degenerate_removed": 0,
+      "duplicate_removed": 1,
+      "isolated_removed": 0
+    },
+    "pre_check": {
+      "self_intersect": true,
+      "count": 1,
+      "pairs": []
+    },
+    "autorefined": true,
+    "post_cleanup": {
+      "V_before": 7,
+      "V_after": 7,
+      "F_before": 7,
+      "F_after": 7,
+      "merged_vertices": 0,
+      "degenerate_removed": 0,
+      "duplicate_removed": 0,
+      "isolated_removed": 0
+    },
+    "post_check": {
+      "self_intersect": false,
+      "count": 0,
+      "pairs": []
+    },
+    "final_vertices": 7,
+    "final_faces": 7
+  }
+]

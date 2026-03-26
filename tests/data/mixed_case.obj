@@ -1,0 +1,11 @@
+# duplicate vertex + self-intersection in one soup
+v 0 0 0
+v 2 0 0
+v 1 2 0
+v 0 0 0
+v 1 0.5 -1
+v 1 0.5 1
+v 1 1.5 0
+f 1 2 3
+f 4 2 3
+f 5 6 7
