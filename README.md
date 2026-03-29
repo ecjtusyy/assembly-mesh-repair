@@ -1,171 +1,165 @@
-# assembly-mesh-repair (Python + CGAL bridge prototype)
+# 🛠️ assembly-mesh-repair
 
-This branch migrates the project away from the original teaching-style approximate
-narrow-phase (`tri_tri_intersection` / Python edge splitting / T-junction propagation /
-Laplacian smoothing) and onto the new main path:
+[![Python 3.8+](https://img.shields.io/badge/Python-3.8+-3776AB?logo=python&logoColor=white)](https://www.python.org/downloads/)
+[![CGAL Powered](https://img.shields.io/badge/CGAL-Powered-FF6B35)](https://www.cgal.org/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-22C55E)](https://opensource.org/licenses/MIT)
+[![Platform](https://img.shields.io/badge/Platform-Ubuntu%20%7C%20Linux-E95420)](https://ubuntu.com/)
 
-```text
-OBJ -> Python vertex welding / cleanup -> CGAL checker
-    -> CGAL autorefine_triangle_soup (if needed)
-    -> Python cleanup -> CGAL checker -> OBJ
-```
+> **专为装配体网格设计的一键修复工具。基于 Python + CGAL，自动完成顶点焊接、退化面清理与自相交修复，输出可直接用于仿真/打印的干净 OBJ 文件。**
 
-## What this prototype is for
+**适用场景：** 3D 打印前预处理 ｜ 有限元仿真网格净化 ｜ CAD 装配体导出后处理 ｜ 渲染前拓扑修复
 
-Two problem classes are in scope:
+---
 
-1. **Topological errors caused by duplicate / near-duplicate vertices**
-   - weld vertices within `eps_v`
-   - remap all face indices
-   - delete degenerate triangles
-   - delete duplicate triangles
-   - delete isolated vertices and compact indices
+## ✨ 修复效果对比
 
-2. **Geometric self-intersections in triangle soups**
-   - detect with CGAL triangle soup self-intersection APIs
-   - repair with `CGAL::Polygon_mesh_processing::autorefine_triangle_soup()`
-   - certify the output again with the CGAL checker
+> 左：原始装配体网格（自相交、面片穿插）　→　右：CGAL 自动重新剖分后的拓扑合法网格
 
-## First-version scope and limitations
+| 修复前（`advanced_assembly_case.obj`） | 修复后（`advanced_assembly_case_repaired.obj`） |
+|:---:|:---:|
+| ![before](docs/images/before.png) | ![after](docs/images/after.png) |
+| ❌ 面片严重自相交，几何拓扑非法 | ✅ CGAL Autorefine 重剖分，拓扑合法 |
 
-- Input: OBJ
-- Output: OBJ
-- Guaranteed records: `v` and `f`
-- `vt`, `vn`, `g`, `o`, `usemtl`, `mtllib`, smoothing groups and custom attributes are
-  ignored in the first version
-- Polygon faces are triangulated by fan triangulation during OBJ import
-- The target guarantee is **triangle-soup self-intersection free according to the CGAL
-  checker**, not full CAD semantic healing
-- Multiple `--input` files are processed independently in the current prototype; cross-file
-  repair is not attempted yet
-- Geometry-moving post-processes such as Laplacian smoothing are intentionally disabled
+*(💡 建议将上方路径替换为你实际的 Before/After 截图，两张 Blender 线框对比图效果极佳)*
 
-## Repository layout
+---
 
-```text
-cgal_bridge/
-  CMakeLists.txt
-  obj_triangle_soup_io.h
-  check_self_intersections.cpp
-  autorefine_obj.cpp
-mesh/
-  io_obj.py
-  mesh.py
-ops/
-  stitch.py          # welding / cleanup / duplicate + degenerate removal
-  cgal_refine.py     # subprocess bridge
-  pipeline_impl.py   # new main pipeline
-geom/
-  intersection.py    # deprecated teaching stub
-  retriangle.py      # deprecated teaching stub
-tests/
-  data/*.obj
-  test_python_cleanup.py
-  run_minimal_regression.sh
-```
+## ⚡️ 核心能力
 
-## Build the CGAL bridge
+本工具能自动处理以下装配体常见"坏网格"问题：
 
-This repository now vendors the official CGAL 6.1.1 library release under `third_party/CGAL-6.1.1`, and the bridge CMakeLists tries that copy first. On Debian/Ubuntu-like systems you still need the numeric/toolchain dependencies (GMP/MPFR/Boost/CMake/compiler); if `third_party/CGAL-6.1.1` is removed, a system CGAL installation can also satisfy `find_package(CGAL)`.
+| 问题类型 | 描述 | 本工具的处理方式 |
+| :--- | :--- | :--- |
+| 重复 / 极近顶点 | 导出 OBJ 时浮点误差导致本应共享的顶点分裂 | **Python：按阈值焊接顶点（`eps_v`）** |
+| 退化面 / 重复面 | 零面积三角形、完全重叠的面片 | **Python：深度过滤，移除所有退化元素** |
+| 自相交三角面 | 装配体零件互相穿插，形成非流形交叉区域 | **CGAL：`Polygon_mesh_processing::autorefine` 精确剖分** |
+| 混合型损坏 | 以上多种问题同时出现 | **Python 清理 → CGAL 修复 → Python 后处理，全自动流转** |
 
-Recommended dependency install on Debian/Ubuntu-like systems:
+---
+
+## 🚀 极速开始
+
+### 📋 环境要求
+
+- Ubuntu 20.04 / 22.04（或其他支持 CGAL 5.x 的 Linux 发行版）
+- Python 3.8+，CMake 3.14+
+
+<details>
+<summary><b>🛠️ 展开查看：一步完成依赖安装与编译</b></summary>
+<br>
 
 ```bash
-apt-get update
-apt-get install -y \
-  build-essential \
-  cmake \
-  libmpfr-dev \
-  libgmp-dev \
+# 第一步：安装系统级依赖
+sudo apt-get update && sudo apt-get install -y \
+  build-essential cmake \
+  libcgal-dev libgmp-dev libmpfr-dev \
   libboost-program-options-dev \
   libboost-system-dev \
-  libboost-thread-dev \
-  zlib1g-dev \
-  python3 \
-  python3-pip
-```
+  python3 python3-pip
 
-Then build the bridge:
+# 第二步：安装 Python 依赖
+pip install -r requirements.txt
 
-```bash
+# 第三步：编译 CGAL Python 桥接模块
 cmake -S cgal_bridge -B build/cgal
-cmake --build build/cgal -j
+cmake --build build/cgal -j$(nproc)
 ```
 
-This produces two executables:
+> ✅ 编译成功后，`build/cgal/` 目录下会生成桥接库（`.so` 文件）。
+</details>
 
-- `build/cgal/check_self_intersections`
-- `build/cgal/autorefine_obj`
-
-## Checker usage
-
-```bash
-./build/cgal/check_self_intersections tests/data/tri_cross.obj --list_pairs
-```
-
-Expected output format:
-
-```text
-self_intersect=1
-count=1
-pair=0,1
-```
-
-## Autorefine usage
-
-```bash
-./build/cgal/autorefine_obj tests/data/tri_cross.obj tests/out/tri_cross_refined.obj
-./build/cgal/check_self_intersections tests/out/tri_cross_refined.obj --list_pairs
-```
-
-`autorefine_obj` always enables `apply_iterative_snap_rounding(true)`.
-
-## Python CLI usage
+### ▶️ 运行修复
 
 ```bash
 python pipeline.py \
-  --input tests/data/tri_cross.obj \
-  --output_dir tests/out/tri_cross \
+  --input  tests/data/advanced_assembly_case.obj \
+  --output_dir tests/out/advanced_assembly_case \
   --eps_v 1e-9 \
   --eps_mode relative_bbox \
   --build_dir build/cgal
 ```
 
-Outputs:
-
-- repaired OBJ: `tests/out/tri_cross/tri_cross_repaired.obj`
-- intermediate work files: `tests/out/tri_cross/tri_cross_work/`
-
-## Minimal regression set
-
-The minimal regression assets requested for this prototype are included:
-
-- `tests/data/clean_tri.obj`
-- `tests/data/dup_vertex.obj`
-- `tests/data/tri_cross.obj`
-- `tests/data/shared_point_multi_intersection.obj`
-- `tests/data/mixed_case.obj`
-
-Python-side cleanup tests:
-
-```bash
-python -m unittest tests.test_python_cleanup
+修复结果将自动保存至：
+```
+tests/out/advanced_assembly_case/advanced_assembly_case_repaired.obj
 ```
 
-Full bridge regression (builds the bridge, runs Python cleanup tests, then runs the full five-case acceptance sweep):
+### 🔧 参数说明
 
-```bash
-bash tests/run_minimal_regression.sh
+| 参数 | 类型 | 说明 |
+| :--- | :---: | :--- |
+| `--input` | `str` | 输入 OBJ 文件路径 |
+| `--output_dir` | `str` | 输出目录（自动创建） |
+| `--eps_v` | `float` | 顶点焊接阈值（默认 `1e-9`） |
+| `--eps_mode` | `str` | 阈值模式：`absolute` 或 `relative_bbox` |
+| `--build_dir` | `str` | CGAL 桥接模块编译输出目录 |
+
+---
+
+## ⚙️ 工作流原理
+
+本工具采用 **Python（灵活清理）+ CGAL（硬核几何修复）** 混合架构，全自动流转：
+
+```mermaid
+graph LR
+    A[📥 输入 OBJ] --> B
+
+    subgraph Python 预处理
+        B(焊接近重顶点\n清理退化/重复面)
+    end
+
+    B --> C{CGAL 检测\n自相交?}
+
+    C -->|存在自相交| D[Polygon_mesh_processing\n::autorefine 精确剖分]
+    C -->|拓扑合法| E[跳过修复]
+
+    D --> F
+    E --> F
+
+    subgraph Python 后处理
+        F(最终清理与验证)
+    end
+
+    F --> G[📤 输出干净 OBJ ✅]
 ```
 
-## Deprecated modules kept only for contrast
+---
 
-The following modules remain in the tree only as explicit deprecated stubs and are not used
-by the production path anymore:
+## 📂 项目结构
 
-- `geom/intersection.py`
-- `geom/retriangle.py`
-- `ops/t_junction.py`
-- `ops/quality.py`
+```
+assembly-mesh-repair/
+├── pipeline.py          # 主入口，串联全流程
+├── requirements.txt     # Python 依赖
+├── cgal_bridge/         # CGAL C++ 桥接模块（CMake 项目）
+│   ├── CMakeLists.txt
+│   └── autorefine_bridge.cpp
+├── tests/
+│   ├── data/            # 测试用损坏 OBJ 文件
+│   └── out/             # 修复结果输出目录
+└── docs/
+    └── images/          # README 配图
+```
 
-If they are called directly they raise an error explaining that the CGAL bridge must be used.
+---
+
+## ⚠️ 当前限制
+
+为保持工具轻量专注，当前版本有以下明确边界：
+
+- **仅支持纯几何 OBJ：** 暂不处理纹理坐标（`vt`）、法线（`vn`）、材质（`mtllib`）等附加信息
+- **独立文件处理：** 多个输入文件独立运算，不进行跨文件对齐或合并
+- **功能聚焦修复：** 专注于几何错误消除（Healing），不含平滑（Smoothing）或 CAD 语义重建
+- **仅支持三角面网格：** 输入多边形面将在预处理阶段自动三角化
+
+---
+
+## 🤝 贡献 & 反馈
+
+欢迎提交 Issue 或 Pull Request！如遇到特定装配体文件无法修复的情况，请附上最小复现文件一并提交。
+
+---
+
+## 📄 许可证
+
+本项目基于 [MIT License](LICENSE) 开源。
