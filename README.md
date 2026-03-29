@@ -17,7 +17,7 @@
 
 | 修复前（`advanced_assembly_case.obj`） | 修复后（`advanced_assembly_case_repaired.obj`） |
 |:---:|:---:|
-| ![before](docs/images/before.png) | ![after](docs/images/after.png) |
+| <img width="865" height="544" alt="image" src="https://github.com/user-attachments/assets/d501ee85-095d-4f0a-97fe-3e7c502f33f5" /> | <img width="865" height="541" alt="image" src="https://github.com/user-attachments/assets/97ce4f91-62cb-49b5-9a2e-8265de2b043c" /> |
 | ❌ 面片严重自相交，几何拓扑非法 | ✅ CGAL Autorefine 重剖分，拓扑合法 |
 
 *(💡 建议将上方路径替换为你实际的 Before/After 截图，两张 Blender 线框对比图效果极佳)*
