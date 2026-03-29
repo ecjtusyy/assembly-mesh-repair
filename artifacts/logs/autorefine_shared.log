@@ -1,7 +1,0 @@
-input_self_intersect=1
-input_points=9
-input_triangles=3
-autorefine_success=1
-output_self_intersect=0
-output_points=16
-output_triangles=24

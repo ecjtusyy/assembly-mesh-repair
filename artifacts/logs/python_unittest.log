@@ -1,8 +1,0 @@
-test_clean_tri_remains_clean (tests.test_python_cleanup.PythonCleanupTests.test_clean_tri_remains_clean) ... ok
-test_dup_vertex_collapses_to_single_triangle (tests.test_python_cleanup.PythonCleanupTests.test_dup_vertex_collapses_to_single_triangle) ... ok
-test_mixed_case_precleanup_only_removes_duplicate_triangle (tests.test_python_cleanup.PythonCleanupTests.test_mixed_case_precleanup_only_removes_duplicate_triangle) ... ok
-
-----------------------------------------------------------------------
-Ran 3 tests in 0.004s
-
-OK

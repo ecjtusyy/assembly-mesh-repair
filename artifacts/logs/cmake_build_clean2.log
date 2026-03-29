@@ -1,6 +1,0 @@
-[ 25%] Building CXX object CMakeFiles/check_self_intersections.dir/check_self_intersections.cpp.o
-[ 50%] Building CXX object CMakeFiles/autorefine_obj.dir/autorefine_obj.cpp.o
-[ 75%] Linking CXX executable check_self_intersections
-[ 75%] Built target check_self_intersections
-[100%] Linking CXX executable autorefine_obj
-[100%] Built target autorefine_obj

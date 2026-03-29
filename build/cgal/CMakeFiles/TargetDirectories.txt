@@ -1,0 +1,4 @@
+/workspaces/assembly-mesh-repair/build/cgal/CMakeFiles/check_self_intersections.dir
+/workspaces/assembly-mesh-repair/build/cgal/CMakeFiles/autorefine_obj.dir
+/workspaces/assembly-mesh-repair/build/cgal/CMakeFiles/edit_cache.dir
+/workspaces/assembly-mesh-repair/build/cgal/CMakeFiles/rebuild_cache.dir
