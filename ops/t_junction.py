@@ -1,8 +1,6 @@
 # -*- coding: utf-8 -*-
-"""Deprecated teaching-only T-junction fixer.
-
-T-junction propagation is not used as the main 3D self-intersection repair route in this
-branch.
+"""
+Python 侧 T-junction 传播修复
 """
 
 from __future__ import annotations

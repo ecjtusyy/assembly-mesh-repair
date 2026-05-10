@@ -1,0 +1,63 @@
+[
+  {
+    "输入文件": "tests/data/advanced_assembly_case.obj",
+    "修复输出OBJ": "tests/out/gmsh_pipeline_demo/advanced_assembly_case_repaired.obj",
+    "Gmsh加密": {
+      "是否开启": true,
+      "加密前顶点数": 40,
+      "加密前三角形数": 74,
+      "加密后顶点数": 37984,
+      "加密后三角形数": 75776,
+      "工作目录": "tests/out/gmsh_pipeline_demo/advanced_assembly_case_work/gmsh_refine",
+      "临时STL": "tests/out/gmsh_pipeline_demo/advanced_assembly_case_work/gmsh_refine/repaired_tmp.stl",
+      "中间MSH": "tests/out/gmsh_pipeline_demo/advanced_assembly_case_work/gmsh_refine/refined.msh",
+      "模式": "相对 bbox 目标边长",
+      "目标边长": 0.12,
+      "目标边长比例": 0.02,
+      "bbox对角线": 6.0,
+      "当前最大边长": 5.656854249492381,
+      "原始估算细分次数": 6,
+      "实际使用细分次数": 5,
+      "最大允许细分次数": 5,
+      "是否被最大细分次数截断": true,
+      "估算加密后最大边长": 0.1767766952966369,
+      "输出OBJ": "tests/out/gmsh_pipeline_demo/advanced_assembly_case_repaired_refined.obj"
+    },
+    "eps_mode": "relative_bbox",
+    "eps_v_input": 1e-09,
+    "eps_v_abs": 6.000000000000001e-09,
+    "pre_cleanup": {
+      "V_before": 25,
+      "V_after": 24,
+      "F_before": 13,
+      "F_after": 12,
+      "merged_vertices": 1,
+      "degenerate_removed": 0,
+      "duplicate_removed": 1,
+      "isolated_removed": 0
+    },
+    "pre_check": {
+      "self_intersect": true,
+      "count": 18,
+      "pairs": []
+    },
+    "autorefined": true,
+    "post_cleanup": {
+      "V_before": 40,
+      "V_after": 40,
+      "F_before": 74,
+      "F_after": 74,
+      "merged_vertices": 0,
+      "degenerate_removed": 0,
+      "duplicate_removed": 0,
+      "isolated_removed": 0
+    },
+    "post_check": {
+      "self_intersect": false,
+      "count": 0,
+      "pairs": []
+    },
+    "final_vertices": 40,
+    "final_faces": 74
+  }
+]
