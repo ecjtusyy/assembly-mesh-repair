@@ -1,1 +1,29 @@
 numpy>=1.23
+gmsh>=4.11
+meshio>=5.3
+
+"""
+安装完gmsh后出现问题的解决方法
+sudo apt-get update
+
+sudo apt-get install -y \
+  libglu1-mesa \
+  libgl1 \
+  libglx-mesa0 \
+  libopengl0 \
+  libxcursor1 \
+  libxinerama1 \
+  libxft2 \
+  libxrender1 \
+  libxi6 \
+  libxrandr2 \
+  libxfixes3 \
+  libxext6 \
+  libx11-6 \
+  libsm6 \
+  libice6 \
+  libfontconfig1 \
+  libfreetype6
+
+python -c "import gmsh; print('gmsh import ok')"
+"""
