@@ -162,3 +162,19 @@ assembly-mesh-repair/
 ## 📄 许可证
 
 本项目基于 [MIT License](LICENSE) 开源。
+
+记录当今的命令
+python pipeline.py \
+  --input \
+  "tests/data/土块加底土（相互穿透、存在体积重叠）.obj" \
+  "tests/data/整体元素土块底土（存在共享接触面）.obj" \
+  "tests/data/基坑1.0（存在多部分贴合和局部重叠）.obj" \
+  "tests/data/基坑单元格未合并（存在多部分贴合和局部重叠）.obj" \
+  --output_dir tests/out/four_obj_repair_gmsh \
+  --eps_v 1e-9 \
+  --eps_mode relative_bbox \
+  --build_dir build/cgal \
+  --gmsh_refine \
+  --gmsh_target_edge_ratio 0.02 \
+  --gmsh_max_refine_levels 5 \
+  --report_json tests/out/four_obj_repair_gmsh/report.json

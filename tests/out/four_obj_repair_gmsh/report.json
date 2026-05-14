@@ -1,0 +1,246 @@
+[
+  {
+    "输入文件": "tests/data/土块加底土（相互穿透、存在体积重叠）.obj",
+    "修复输出OBJ": "tests/out/four_obj_repair_gmsh/土块加底土（相互穿透、存在体积重叠）_repaired.obj",
+    "Gmsh加密": {
+      "是否开启": true,
+      "加密前顶点数": 24,
+      "加密前三角形数": 56,
+      "加密后顶点数": 28482,
+      "加密后三角形数": 57344,
+      "工作目录": "tests/out/four_obj_repair_gmsh/土块加底土（相互穿透、存在体积重叠）_work/gmsh_refine",
+      "临时STL": "tests/out/four_obj_repair_gmsh/土块加底土（相互穿透、存在体积重叠）_work/gmsh_refine/repaired_tmp.stl",
+      "中间MSH": null,
+      "模式": "相对 bbox 目标边长",
+      "目标边长": 4.067069706803659,
+      "目标边长比例": 0.02,
+      "bbox对角线": 203.35348534018294,
+      "当前最大边长": 182.35306413658094,
+      "原始估算细分次数": 6,
+      "实际使用细分次数": 5,
+      "最大允许细分次数": 5,
+      "是否被最大细分次数截断": true,
+      "估算加密后最大边长": 5.698533254268154,
+      "输出OBJ": "tests/out/four_obj_repair_gmsh/土块加底土（相互穿透、存在体积重叠）_repaired_refined.obj"
+    },
+    "eps_mode": "relative_bbox",
+    "eps_v_input": 1e-09,
+    "eps_v_abs": 2.0335350376130808e-07,
+    "pre_cleanup": {
+      "V_before": 24,
+      "V_after": 24,
+      "F_before": 44,
+      "F_after": 44,
+      "merged_vertices": 0,
+      "degenerate_removed": 0,
+      "duplicate_removed": 0,
+      "isolated_removed": 0
+    },
+    "pre_check": {
+      "self_intersect": true,
+      "count": 49,
+      "pairs": []
+    },
+    "autorefined": true,
+    "post_cleanup": {
+      "V_before": 24,
+      "V_after": 24,
+      "F_before": 56,
+      "F_after": 56,
+      "merged_vertices": 0,
+      "degenerate_removed": 0,
+      "duplicate_removed": 0,
+      "isolated_removed": 0
+    },
+    "post_check": {
+      "self_intersect": false,
+      "count": 0,
+      "pairs": []
+    },
+    "final_vertices": 24,
+    "final_faces": 56
+  },
+  {
+    "输入文件": "tests/data/整体元素土块底土（存在共享接触面）.obj",
+    "修复输出OBJ": "tests/out/four_obj_repair_gmsh/整体元素土块底土（存在共享接触面）_repaired.obj",
+    "Gmsh加密": {
+      "是否开启": true,
+      "加密前顶点数": 38,
+      "加密前三角形数": 96,
+      "加密后顶点数": 48646,
+      "加密后三角形数": 98304,
+      "工作目录": "tests/out/four_obj_repair_gmsh/整体元素土块底土（存在共享接触面）_work/gmsh_refine",
+      "临时STL": "tests/out/four_obj_repair_gmsh/整体元素土块底土（存在共享接触面）_work/gmsh_refine/repaired_tmp.stl",
+      "中间MSH": null,
+      "模式": "相对 bbox 目标边长",
+      "目标边长": 4.067069706803659,
+      "目标边长比例": 0.02,
+      "bbox对角线": 203.35348534018294,
+      "当前最大边长": 201.24611797498108,
+      "原始估算细分次数": 6,
+      "实际使用细分次数": 5,
+      "最大允许细分次数": 5,
+      "是否被最大细分次数截断": true,
+      "估算加密后最大边长": 6.288941186718159,
+      "输出OBJ": "tests/out/four_obj_repair_gmsh/整体元素土块底土（存在共享接触面）_repaired_refined.obj"
+    },
+    "eps_mode": "relative_bbox",
+    "eps_v_input": 1e-09,
+    "eps_v_abs": 2.033534984739634e-07,
+    "pre_cleanup": {
+      "V_before": 40,
+      "V_after": 34,
+      "F_before": 60,
+      "F_after": 60,
+      "merged_vertices": 6,
+      "degenerate_removed": 0,
+      "duplicate_removed": 0,
+      "isolated_removed": 0
+    },
+    "pre_check": {
+      "self_intersect": true,
+      "count": 150,
+      "pairs": []
+    },
+    "autorefined": true,
+    "post_cleanup": {
+      "V_before": 38,
+      "V_after": 38,
+      "F_before": 96,
+      "F_after": 96,
+      "merged_vertices": 0,
+      "degenerate_removed": 0,
+      "duplicate_removed": 0,
+      "isolated_removed": 0
+    },
+    "post_check": {
+      "self_intersect": false,
+      "count": 0,
+      "pairs": []
+    },
+    "final_vertices": 38,
+    "final_faces": 96
+  },
+  {
+    "输入文件": "tests/data/基坑1.0（存在多部分贴合和局部重叠）.obj",
+    "修复输出OBJ": "tests/out/four_obj_repair_gmsh/基坑1.0（存在多部分贴合和局部重叠）_repaired.obj",
+    "Gmsh加密": {
+      "是否开启": true,
+      "加密前顶点数": 748,
+      "加密前三角形数": 2416,
+      "加密后顶点数": 1220908,
+      "加密后三角形数": 2473984,
+      "工作目录": "tests/out/four_obj_repair_gmsh/基坑1.0（存在多部分贴合和局部重叠）_work/gmsh_refine",
+      "临时STL": "tests/out/four_obj_repair_gmsh/基坑1.0（存在多部分贴合和局部重叠）_work/gmsh_refine/repaired_tmp.stl",
+      "中间MSH": null,
+      "模式": "相对 bbox 目标边长",
+      "目标边长": 1.3955128089702364,
+      "目标边长比例": 0.02,
+      "bbox对角线": 69.77564044851182,
+      "当前最大边长": 60.55377775168119,
+      "原始估算细分次数": 6,
+      "实际使用细分次数": 5,
+      "最大允许细分次数": 5,
+      "是否被最大细分次数截断": true,
+      "估算加密后最大边长": 1.8923055547400371,
+      "输出OBJ": "tests/out/four_obj_repair_gmsh/基坑1.0（存在多部分贴合和局部重叠）_repaired_refined.obj"
+    },
+    "eps_mode": "relative_bbox",
+    "eps_v_input": 1e-09,
+    "eps_v_abs": 6.977564158357845e-08,
+    "pre_cleanup": {
+      "V_before": 272,
+      "V_after": 246,
+      "F_before": 408,
+      "F_after": 408,
+      "merged_vertices": 26,
+      "degenerate_removed": 0,
+      "duplicate_removed": 0,
+      "isolated_removed": 0
+    },
+    "pre_check": {
+      "self_intersect": true,
+      "count": 2306,
+      "pairs": []
+    },
+    "autorefined": true,
+    "post_cleanup": {
+      "V_before": 748,
+      "V_after": 748,
+      "F_before": 2416,
+      "F_after": 2416,
+      "merged_vertices": 0,
+      "degenerate_removed": 0,
+      "duplicate_removed": 0,
+      "isolated_removed": 0
+    },
+    "post_check": {
+      "self_intersect": false,
+      "count": 0,
+      "pairs": []
+    },
+    "final_vertices": 748,
+    "final_faces": 2416
+  },
+  {
+    "输入文件": "tests/data/基坑单元格未合并（存在多部分贴合和局部重叠）.obj",
+    "修复输出OBJ": "tests/out/four_obj_repair_gmsh/基坑单元格未合并（存在多部分贴合和局部重叠）_repaired.obj",
+    "Gmsh加密": {
+      "是否开启": true,
+      "加密前顶点数": 572,
+      "加密前三角形数": 1904,
+      "加密后顶点数": 961386,
+      "加密后三角形数": 1949696,
+      "工作目录": "tests/out/four_obj_repair_gmsh/基坑单元格未合并（存在多部分贴合和局部重叠）_work/gmsh_refine",
+      "临时STL": "tests/out/four_obj_repair_gmsh/基坑单元格未合并（存在多部分贴合和局部重叠）_work/gmsh_refine/repaired_tmp.stl",
+      "中间MSH": null,
+      "模式": "相对 bbox 目标边长",
+      "目标边长": 1.3955128089702364,
+      "目标边长比例": 0.02,
+      "bbox对角线": 69.77564044851182,
+      "当前最大边长": 60.55377775168119,
+      "原始估算细分次数": 6,
+      "实际使用细分次数": 5,
+      "最大允许细分次数": 5,
+      "是否被最大细分次数截断": true,
+      "估算加密后最大边长": 1.8923055547400371,
+      "输出OBJ": "tests/out/four_obj_repair_gmsh/基坑单元格未合并（存在多部分贴合和局部重叠）_repaired_refined.obj"
+    },
+    "eps_mode": "relative_bbox",
+    "eps_v_input": 1e-09,
+    "eps_v_abs": 7.020605759049583e-08,
+    "pre_cleanup": {
+      "V_before": 172,
+      "V_after": 146,
+      "F_before": 252,
+      "F_after": 252,
+      "merged_vertices": 22,
+      "degenerate_removed": 0,
+      "duplicate_removed": 0,
+      "isolated_removed": 4
+    },
+    "pre_check": {
+      "self_intersect": true,
+      "count": 1498,
+      "pairs": []
+    },
+    "autorefined": true,
+    "post_cleanup": {
+      "V_before": 572,
+      "V_after": 572,
+      "F_before": 1904,
+      "F_after": 1904,
+      "merged_vertices": 0,
+      "degenerate_removed": 0,
+      "duplicate_removed": 0,
+      "isolated_removed": 0
+    },
+    "post_check": {
+      "self_intersect": false,
+      "count": 0,
+      "pairs": []
+    },
+    "final_vertices": 572,
+    "final_faces": 1904
+  }
+]
