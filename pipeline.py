@@ -1,12 +1,10 @@
-#!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """OBJ 修复命令行入口。
 
 主流程只做调度：
 1. 读取 OBJ 为 V/F；
 2. 调用 repair_single_mesh 做 Python 清理 + CGAL 修复；
 3. 保存 repaired OBJ；
-4. 可选调用 Gmsh 对 repaired OBJ 继续细分；
+4. 根据 readiness 决定是否允许 Gmsh 继续细分；
 5. 写出 JSON 统计报告。
 """
 
@@ -25,6 +23,15 @@ from ops.pipeline_impl import repair_single_mesh
 
 Mesh = dict[str, np.ndarray]
 Report = dict[str, object]
+
+GMSH_REFINE_SKIP_REASON = (
+    "Mesh is not topology-ready for safe Gmsh refinement. "
+    "Use --force_gmsh_refine to override."
+)
+
+FORCED_GMSH_REFINE_WARNING = (
+    "Forced Gmsh refinement on a mesh that is not manifold-ready."
+)
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -63,6 +70,11 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--number_of_iterations", type=int, default=5, help="CGAL snap rounding 最大迭代次数。")
 
     parser.add_argument("--gmsh_refine", action="store_true", help="修复后继续执行 Gmsh 三角网格细分。")
+    parser.add_argument(
+        "--force_gmsh_refine",
+        action="store_true",
+        help="即使 readiness 不通过，也强制执行 Gmsh 表面加密。",
+    )
     parser.add_argument("--gmsh_refine_levels", type=int, default=1, help="手动指定 Gmsh 细分次数。")
     parser.add_argument("--gmsh_target_edge_length", type=float, default=None, help="目标边长绝对值。")
     parser.add_argument("--gmsh_target_edge_ratio", type=float, default=None, help="目标边长相对 bbox 对角线的比例。")
@@ -75,10 +87,52 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
+def should_run_gmsh_refine(
+    *,
+    gmsh_requested: bool,
+    gmsh_ready: bool,
+    force_gmsh_refine: bool,
+) -> tuple[bool, bool, str | None]:
+    """判断是否真正执行 Gmsh refine。
+
+    返回 should_run、skipped、skip_reason。
+    这个函数只处理门禁逻辑，不依赖真实 Gmsh，方便单独测试。
+    """
+    if not gmsh_requested:
+        return False, False, None
+
+    if gmsh_ready or force_gmsh_refine:
+        return True, False, None
+
+    return False, True, GMSH_REFINE_SKIP_REASON
+
+
+def new_gmsh_report(gmsh_requested: bool) -> Report:
+    """生成 Gmsh 加密报告的基础结构。"""
+    return {
+        "是否开启": bool(gmsh_requested),
+        "是否执行": False,
+        "是否跳过": False,
+        "gmsh_refine_skipped": False,
+        "gmsh_refine_skip_reason": None,
+        "warnings": [],
+    }
+
+
+def extract_gmsh_ready(repair_report_dict: Report) -> bool:
+    """从 repair report 中读取 gmsh_refine_ready。"""
+    readiness = repair_report_dict.get("readiness", {})
+    if not isinstance(readiness, dict):
+        return False
+
+    return bool(readiness.get("gmsh_refine_ready", False))
+
+
 def import_gmsh_deps() -> tuple[object, object]:
     """导入 Gmsh 加密所需依赖。
 
-    只有用户开启 --gmsh_refine 时才会调用，避免普通修复流程强依赖 gmsh/meshio。
+    只有用户开启 --gmsh_refine 且门禁允许执行时才调用，
+    避免普通修复流程强依赖 gmsh/meshio。
     """
     try:
         import gmsh  # type: ignore
@@ -101,7 +155,8 @@ def collect_triangles(mesh) -> np.ndarray:
 def mesh_max_edge_length(V: np.ndarray, F: np.ndarray) -> float:
     """计算三角网格中的最大边长。
 
-    F 中存的是顶点编号；先用编号回查 V 得到三角形三个点，再计算三条边长。
+    F 中存的是顶点编号；先用编号回查 V 得到三角形三个点，
+    再分别计算三条边长并取最大值。
     """
     points = np.asarray(V, dtype=np.float64)
     faces = np.asarray(F, dtype=np.int64)
@@ -131,7 +186,12 @@ def bbox_diagonal_length(V: np.ndarray) -> float:
     return float(np.linalg.norm(bbox_max - bbox_min))
 
 
-def _manual_level_report(levels: int, current_max_edge: float, bbox_diag: float) -> Report:
+def _manual_level_report(
+    levels: int,
+    current_max_edge: float,
+    bbox_diag: float,
+    max_refine_levels: int,
+) -> Report:
     """生成手动细分次数模式下的报告。"""
     estimated_h = current_max_edge / (2.0**levels) if current_max_edge > 0 else 0.0
 
@@ -143,6 +203,7 @@ def _manual_level_report(levels: int, current_max_edge: float, bbox_diag: float)
         "当前最大边长": current_max_edge,
         "原始估算细分次数": levels,
         "实际使用细分次数": levels,
+        "最大允许细分次数": int(max_refine_levels),
         "是否被最大细分次数截断": False,
         "估算加密后最大边长": estimated_h,
     }
@@ -186,11 +247,12 @@ def choose_gmsh_refine_levels(
 
     else:
         levels = int(fallback_levels)
-        return levels, _manual_level_report(levels, current_max_edge, bbox_diag)
+        return levels, _manual_level_report(levels, current_max_edge, bbox_diag, max_refine_levels)
 
-    raw_levels = 0 if current_max_edge <= 0 or current_max_edge <= target_h else int(
-        math.ceil(math.log2(current_max_edge / target_h))
-    )
+    raw_levels = 0
+    if current_max_edge > target_h > 0:
+        raw_levels = int(math.ceil(math.log2(current_max_edge / target_h)))
+
     used_levels = min(raw_levels, max_refine_levels)
     estimated_h = current_max_edge / (2.0**used_levels) if current_max_edge > 0 else 0.0
 
@@ -361,9 +423,34 @@ def repair_one_obj(input_path: Path, out_dir: Path, args: argparse.Namespace) ->
     save_obj(repaired_path, repaired_mesh["V"], repaired_mesh["F"])
     print(f"[CLI] 已写出修复后 OBJ：{repaired_path}")
 
-    gmsh_report: Report = {"是否开启": False}
-    if args.gmsh_refine:
-        refined_mesh, gmsh_report = refine_repaired_mesh_with_gmsh(
+    repair_report_dict = repair_report.as_dict()
+    gmsh_ready = extract_gmsh_ready(repair_report_dict)
+    gmsh_report = new_gmsh_report(args.gmsh_refine)
+
+    should_run, skipped, skip_reason = should_run_gmsh_refine(
+        gmsh_requested=bool(args.gmsh_refine),
+        gmsh_ready=gmsh_ready,
+        force_gmsh_refine=bool(args.force_gmsh_refine),
+    )
+
+    if skipped:
+        print("[GMSH] skipped: mesh is not gmsh_refine_ready")
+        gmsh_report.update(
+            {
+                "是否跳过": True,
+                "gmsh_refine_skipped": True,
+                "gmsh_refine_skip_reason": skip_reason,
+                "跳过原因": skip_reason,
+            }
+        )
+
+    elif should_run:
+        warnings = list(gmsh_report["warnings"])
+        if not gmsh_ready and args.force_gmsh_refine:
+            print("[GMSH][WARN] forced refine on non-ready mesh")
+            warnings.append(FORCED_GMSH_REFINE_WARNING)
+
+        refined_mesh, refine_report = refine_repaired_mesh_with_gmsh(
             repaired_mesh,
             work_dir=work_dir,
             fallback_levels=args.gmsh_refine_levels,
@@ -373,6 +460,18 @@ def repair_one_obj(input_path: Path, out_dir: Path, args: argparse.Namespace) ->
             terminal=args.gmsh_terminal,
             keep_msh=args.gmsh_keep_msh,
         )
+
+        gmsh_report.update(refine_report)
+        gmsh_report.update(
+            {
+                "是否执行": True,
+                "是否跳过": False,
+                "gmsh_refine_skipped": False,
+                "gmsh_refine_skip_reason": None,
+                "warnings": warnings,
+            }
+        )
+
         save_obj(refined_path, refined_mesh["V"], refined_mesh["F"])
         gmsh_report["输出OBJ"] = str(refined_path)
         print(f"[CLI] 已写出加密后 OBJ：{refined_path}")
@@ -381,7 +480,7 @@ def repair_one_obj(input_path: Path, out_dir: Path, args: argparse.Namespace) ->
         "输入文件": str(input_path),
         "修复输出OBJ": str(repaired_path),
         "Gmsh加密": gmsh_report,
-        **repair_report.as_dict(),
+        **repair_report_dict,
     }
 
 
