@@ -1,0 +1,30 @@
+# Python cache
+__pycache__/
+*.py[cod]
+.pytest_cache/
+
+# Build outputs
+build/
+cmake-build-*/
+CMakeFiles/
+CMakeCache.txt
+cmake_install.cmake
+Makefile
+
+# Runtime outputs
+tests/out/
+*_work/
+*_repaired.obj
+*_repaired_refined.obj
+*.msh
+*.stl
+
+# Local env
+.venv/
+venv/
+.env
+
+# OS / editor
+.DS_Store
+.vscode/
+.idea/
