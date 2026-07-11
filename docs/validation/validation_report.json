@@ -1,0 +1,383 @@
+{
+  "models": {
+    "soil_overlap": {
+      "before": {
+        "vertices": 24,
+        "faces": 44,
+        "parts": 2,
+        "topology": {
+          "vertices": 24,
+          "faces": 44,
+          "edges": 66,
+          "boundary_edges": 0,
+          "nonmanifold_edges": 0,
+          "nonmanifold_vertices": 0,
+          "max_edge_incidence": 2,
+          "duplicate_faces": 0,
+          "degenerate_faces": 0,
+          "edge_component_count": 2,
+          "edge_component_sizes": [
+            12,
+            32
+          ],
+          "sample_boundary_edges": [],
+          "sample_nonmanifold_edges": [],
+          "sample_nonmanifold_vertices": [],
+          "sample_duplicate_faces": [],
+          "sample_degenerate_faces": []
+        },
+        "part_volume_sum": 438480.0873960055,
+        "closed_volume_parts": 2
+      },
+      "after": {
+        "success": true,
+        "errors": [],
+        "vertices": 22,
+        "faces": 44,
+        "topology": {
+          "vertices": 22,
+          "faces": 44,
+          "edges": 66,
+          "boundary_edges": 0,
+          "nonmanifold_edges": 0,
+          "nonmanifold_vertices": 0,
+          "max_edge_incidence": 2,
+          "duplicate_faces": 0,
+          "degenerate_faces": 0,
+          "edge_component_count": 1,
+          "edge_component_sizes": [
+            44
+          ],
+          "sample_boundary_edges": [],
+          "sample_nonmanifold_edges": [],
+          "sample_nonmanifold_vertices": [],
+          "sample_duplicate_faces": [],
+          "sample_degenerate_faces": []
+        },
+        "is_watertight": true,
+        "is_winding_consistent": true,
+        "is_volume": true,
+        "volume": 438480.08650422475
+      },
+      "overlap": {
+        "removed_volume": 0.0008917807717807591,
+        "detected": true,
+        "relative_to_part_volume_sum": 2.0337999316611226e-09
+      },
+      "checks": {
+        "pipeline_success": true,
+        "exact_path_used": true,
+        "no_degenerate_faces": true,
+        "no_duplicate_faces": true,
+        "no_nonmanifold_edges": true,
+        "no_nonmanifold_vertices": true,
+        "watertight": true,
+        "winding_consistent": true,
+        "positive_volume": true,
+        "single_output_component": true,
+        "manifold3d_roundtrip": true,
+        "union_volume_not_larger_than_parts": true
+      },
+      "all_checks_passed": true,
+      "source": "土块加底土（相互穿透、存在体积重叠）.obj"
+    },
+    "pit_overlap": {
+      "before": {
+        "vertices": 272,
+        "faces": 408,
+        "parts": 34,
+        "topology": {
+          "vertices": 272,
+          "faces": 408,
+          "edges": 612,
+          "boundary_edges": 0,
+          "nonmanifold_edges": 0,
+          "nonmanifold_vertices": 0,
+          "max_edge_incidence": 2,
+          "duplicate_faces": 0,
+          "degenerate_faces": 0,
+          "edge_component_count": 34,
+          "edge_component_sizes": [
+            12,
+            12,
+            12,
+            12,
+            12,
+            12,
+            12,
+            12,
+            12,
+            12,
+            12,
+            12,
+            12,
+            12,
+            12,
+            12,
+            12,
+            12,
+            12,
+            12,
+            12,
+            12,
+            12,
+            12,
+            12,
+            12,
+            12,
+            12,
+            12,
+            12,
+            12,
+            12,
+            12,
+            12
+          ],
+          "sample_boundary_edges": [],
+          "sample_nonmanifold_edges": [],
+          "sample_nonmanifold_vertices": [],
+          "sample_duplicate_faces": [],
+          "sample_degenerate_faces": []
+        },
+        "part_volume_sum": 4388.400941399987,
+        "closed_volume_parts": 34
+      },
+      "after": {
+        "success": true,
+        "errors": [],
+        "vertices": 259,
+        "faces": 606,
+        "topology": {
+          "vertices": 259,
+          "faces": 606,
+          "edges": 909,
+          "boundary_edges": 0,
+          "nonmanifold_edges": 0,
+          "nonmanifold_vertices": 0,
+          "max_edge_incidence": 2,
+          "duplicate_faces": 0,
+          "degenerate_faces": 0,
+          "edge_component_count": 1,
+          "edge_component_sizes": [
+            606
+          ],
+          "sample_boundary_edges": [],
+          "sample_nonmanifold_edges": [],
+          "sample_nonmanifold_vertices": [],
+          "sample_duplicate_faces": [],
+          "sample_degenerate_faces": []
+        },
+        "is_watertight": true,
+        "is_winding_consistent": true,
+        "is_volume": true,
+        "volume": 4231.200888922849
+      },
+      "overlap": {
+        "removed_volume": 157.20005247713743,
+        "detected": true,
+        "relative_to_part_volume_sum": 0.03582171605928685
+      },
+      "checks": {
+        "pipeline_success": true,
+        "exact_path_used": true,
+        "no_degenerate_faces": true,
+        "no_duplicate_faces": true,
+        "no_nonmanifold_edges": true,
+        "no_nonmanifold_vertices": true,
+        "watertight": true,
+        "winding_consistent": true,
+        "positive_volume": true,
+        "single_output_component": true,
+        "manifold3d_roundtrip": true,
+        "union_volume_not_larger_than_parts": true
+      },
+      "all_checks_passed": true,
+      "source": "基坑1.0（存在多部分贴合和局部重叠）.obj"
+    },
+    "cell_overlap": {
+      "before": {
+        "vertices": 172,
+        "faces": 252,
+        "parts": 21,
+        "topology": {
+          "vertices": 172,
+          "faces": 252,
+          "edges": 378,
+          "boundary_edges": 0,
+          "nonmanifold_edges": 0,
+          "nonmanifold_vertices": 0,
+          "max_edge_incidence": 2,
+          "duplicate_faces": 0,
+          "degenerate_faces": 0,
+          "edge_component_count": 21,
+          "edge_component_sizes": [
+            12,
+            12,
+            12,
+            12,
+            12,
+            12,
+            12,
+            12,
+            12,
+            12,
+            12,
+            12,
+            12,
+            12,
+            12,
+            12,
+            12,
+            12,
+            12,
+            12,
+            12
+          ],
+          "sample_boundary_edges": [],
+          "sample_nonmanifold_edges": [],
+          "sample_nonmanifold_vertices": [],
+          "sample_duplicate_faces": [],
+          "sample_degenerate_faces": []
+        },
+        "part_volume_sum": 3906.001234200116,
+        "closed_volume_parts": 21
+      },
+      "after": {
+        "success": true,
+        "errors": [],
+        "vertices": 156,
+        "faces": 356,
+        "topology": {
+          "vertices": 156,
+          "faces": 356,
+          "edges": 534,
+          "boundary_edges": 0,
+          "nonmanifold_edges": 0,
+          "nonmanifold_vertices": 0,
+          "max_edge_incidence": 2,
+          "duplicate_faces": 0,
+          "degenerate_faces": 0,
+          "edge_component_count": 1,
+          "edge_component_sizes": [
+            356
+          ],
+          "sample_boundary_edges": [],
+          "sample_nonmanifold_edges": [],
+          "sample_nonmanifold_vertices": [],
+          "sample_duplicate_faces": [],
+          "sample_degenerate_faces": []
+        },
+        "is_watertight": true,
+        "is_winding_consistent": true,
+        "is_volume": true,
+        "volume": 3748.80116952009
+      },
+      "overlap": {
+        "removed_volume": 157.20006468002612,
+        "detected": true,
+        "relative_to_part_volume_sum": 0.040245779572114775
+      },
+      "checks": {
+        "pipeline_success": true,
+        "exact_path_used": true,
+        "no_degenerate_faces": true,
+        "no_duplicate_faces": true,
+        "no_nonmanifold_edges": true,
+        "no_nonmanifold_vertices": true,
+        "watertight": true,
+        "winding_consistent": true,
+        "positive_volume": true,
+        "single_output_component": true,
+        "manifold3d_roundtrip": true,
+        "union_volume_not_larger_than_parts": true
+      },
+      "all_checks_passed": true,
+      "source": "基坑单元格未合并（存在多部分贴合和局部重叠）.obj"
+    },
+    "shared_surface": {
+      "before": {
+        "vertices": 40,
+        "faces": 60,
+        "parts": 5,
+        "topology": {
+          "vertices": 40,
+          "faces": 60,
+          "edges": 90,
+          "boundary_edges": 0,
+          "nonmanifold_edges": 0,
+          "nonmanifold_vertices": 0,
+          "max_edge_incidence": 2,
+          "duplicate_faces": 0,
+          "degenerate_faces": 0,
+          "edge_component_count": 5,
+          "edge_component_sizes": [
+            12,
+            12,
+            12,
+            12,
+            12
+          ],
+          "sample_boundary_edges": [],
+          "sample_nonmanifold_edges": [],
+          "sample_nonmanifold_vertices": [],
+          "sample_duplicate_faces": [],
+          "sample_degenerate_faces": []
+        },
+        "part_volume_sum": 438479.9767799984,
+        "closed_volume_parts": 5
+      },
+      "after": {
+        "success": true,
+        "errors": [],
+        "vertices": 44,
+        "faces": 84,
+        "topology": {
+          "vertices": 44,
+          "faces": 84,
+          "edges": 126,
+          "boundary_edges": 0,
+          "nonmanifold_edges": 0,
+          "nonmanifold_vertices": 0,
+          "max_edge_incidence": 2,
+          "duplicate_faces": 0,
+          "degenerate_faces": 0,
+          "edge_component_count": 1,
+          "edge_component_sizes": [
+            84
+          ],
+          "sample_boundary_edges": [],
+          "sample_nonmanifold_edges": [],
+          "sample_nonmanifold_vertices": [],
+          "sample_duplicate_faces": [],
+          "sample_degenerate_faces": []
+        },
+        "is_watertight": true,
+        "is_winding_consistent": true,
+        "is_volume": true,
+        "volume": 438479.9667719993
+      },
+      "overlap": {
+        "removed_volume": 0.010007999080698937,
+        "detected": true,
+        "relative_to_part_volume_sum": 2.2824301246759825e-08
+      },
+      "checks": {
+        "pipeline_success": true,
+        "exact_path_used": true,
+        "no_degenerate_faces": true,
+        "no_duplicate_faces": true,
+        "no_nonmanifold_edges": true,
+        "no_nonmanifold_vertices": true,
+        "watertight": true,
+        "winding_consistent": true,
+        "positive_volume": true,
+        "single_output_component": true,
+        "manifold3d_roundtrip": true,
+        "union_volume_not_larger_than_parts": true
+      },
+      "all_checks_passed": true,
+      "source": "整体元素土块底土（存在共享接触面）.obj"
+    }
+  },
+  "all_models_passed": true
+}

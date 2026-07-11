@@ -1,2 +1,3 @@
 -r requirements-approx.txt
+-r requirements-visual.txt
 pytest>=8

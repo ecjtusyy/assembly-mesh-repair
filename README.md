@@ -112,3 +112,17 @@ python -m pytest -q
 ```
 
 回归测试包含人工构造的非流形边、面扇、孔洞、近似重建，以及仓库中的四个真实装配体模型。
+
+## 可视化验证
+
+四个真实模型的修复前后对比图、修复后 OBJ 和逐项验收结果保存在
+`docs/validation`。重新生成：
+
+```bash
+python -m pip install -r requirements-visual.txt
+python tools/render_validation.py
+```
+
+脚本检查退化面、重复面、非流形边、非流形点、闭合性、绕序、正体积、
+输出组件数和 Manifold3D 回读，并计算修复前零件体积之和与布尔并集体积之差。
+任何一项失败都会直接报错，不会生成成功结论。
