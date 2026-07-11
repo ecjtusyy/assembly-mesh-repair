@@ -1,180 +1,114 @@
-# 🛠️ assembly-mesh-repair
+# assembly-mesh-repair
 
-[![Python 3.8+](https://img.shields.io/badge/Python-3.8+-3776AB?logo=python&logoColor=white)](https://www.python.org/downloads/)
-[![CGAL Powered](https://img.shields.io/badge/CGAL-Powered-FF6B35)](https://www.cgal.org/)
-[![License: MIT](https://img.shields.io/badge/License-MIT-22C55E)](https://opensource.org/licenses/MIT)
-[![Platform](https://img.shields.io/badge/Platform-Ubuntu%20%7C%20Linux-E95420)](https://ubuntu.com/)
+装配体三角网格修复工具。主程序只写 Python，精确实体布尔运算由 Manifold3D 的 Python wheel 完成，不需要配置 CGAL、CMake 和 Gmsh。
 
-> **专为装配体网格设计的一键修复工具。基于 Python + CGAL，自动完成顶点焊接、退化面清理与自相交修复，输出可直接用于仿真/打印的干净 OBJ 文件。**
+## 三种模式
 
-**适用场景：** 3D 打印前预处理 ｜ 有限元仿真网格净化 ｜ CAD 装配体导出后处理 ｜ 渲染前拓扑修复
+| 模式 | 用途 | 处理方式 |
+|---|---|---|
+| `assembly` | 接触分析、保留多个零件 | 分零件清理，不跨零件焊点 |
+| `surface` | 开放曲面、薄片模型 | 清理退化面、统一绕序、拆分非流形面扇，可补小孔 |
+| `solid` | 3D 打印、统一实体外壳 | 先检查每个零件，再做精确布尔并集 |
 
----
+程序读取 OBJ 时保留 `o`、`g` 和 `usemtl`。零件先按共享边拆分，坐标相同但拓扑独立的接触体不会被提前焊在一起。
 
-## ✨ 修复效果对比
-
-> 左：原始装配体网格（自相交、面片穿插）　→　右：CGAL 自动重新剖分后的拓扑合法网格
-
-| 修复前（`advanced_assembly_case.obj`） | 修复后（`advanced_assembly_case_repaired.obj`） |
-|:---:|:---:|
-| <img width="865" height="544" alt="image" src="https://github.com/user-attachments/assets/d501ee85-095d-4f0a-97fe-3e7c502f33f5" /> | <img width="865" height="541" alt="image" src="https://github.com/user-attachments/assets/97ce4f91-62cb-49b5-9a2e-8265de2b043c" /> |
-| ❌ 面片严重自相交，几何拓扑非法 | ✅ CGAL Autorefine 重剖分，拓扑合法 |
-
-
----
-
-## ⚡️ 核心能力
-
-本工具能自动处理以下装配体常见"坏网格"问题：
-
-| 问题类型 | 描述 | 本工具的处理方式 |
-| :--- | :--- | :--- |
-| 重复 / 极近顶点 | 导出 OBJ 时浮点误差导致本应共享的顶点分裂 | **Python：按阈值焊接顶点（`eps_v`）** |
-| 退化面 / 重复面 | 零面积三角形、完全重叠的面片 | **Python：深度过滤，移除所有退化元素** |
-| 自相交三角面 | 装配体零件互相穿插，形成非流形交叉区域 | **CGAL：`Polygon_mesh_processing::autorefine` 精确剖分** |
-| 混合型损坏 | 以上多种问题同时出现 | **Python 清理 → CGAL 修复 → Python 后处理，全自动流转** |
-
----
-
-## 🚀 极速开始
-
-### 📋 环境要求
-
-- Ubuntu 20.04 / 22.04（或其他支持 CGAL 5.x 的 Linux 发行版）
-- Python 3.8+，CMake 3.14+
-
-<details>
-<summary><b>🛠️ 展开查看：一步完成依赖安装与编译</b></summary>
-<br>
+## 安装
 
 ```bash
-# 第一步：安装系统级依赖
-sudo apt-get update && sudo apt-get install -y \
-  build-essential cmake \
-  libcgal-dev libgmp-dev libmpfr-dev \
-  libboost-program-options-dev \
-  libboost-system-dev \
-  python3 python3-pip
-
-# 第二步：安装 Python 依赖
-pip install -r requirements.txt
-
-# 第三步：编译 CGAL Python 桥接模块
-cmake -S cgal_bridge -B build/cgal
-cmake --build build/cgal -j$(nproc)
+python -m pip install -r requirements.txt
 ```
 
-> ✅ 编译成功后，`build/cgal/` 目录下会生成桥接库（`.so` 文件）。
-</details>
+只有需要近似重建时才安装：
 
-### ▶️ 运行修复
+```bash
+python -m pip install -r requirements-approx.txt
+```
+
+## 使用
+
+保留装配体：
 
 ```bash
 python pipeline.py \
-  --input  tests/data/advanced_assembly_case.obj \
-  --output_dir tests/out/advanced_assembly_case \
-  --eps_v 1e-9 \
-  --eps_mode relative_bbox \
-  --build_dir build/cgal
+  --input "tests/data/基坑1.0（存在多部分贴合和局部重叠）.obj" \
+  --output_dir tests/out \
+  --mode assembly \
+  --report_json tests/out/report.json
 ```
 
-修复结果将自动保存至：
-```
-tests/out/advanced_assembly_case/advanced_assembly_case_repaired.obj
-```
+合并成一个实体：
 
-### 🔧 参数说明
-
-| 参数 | 类型 | 说明 |
-| :--- | :---: | :--- |
-| `--input` | `str` | 输入 OBJ 文件路径 |
-| `--output_dir` | `str` | 输出目录（自动创建） |
-| `--eps_v` | `float` | 顶点焊接阈值（默认 `1e-9`） |
-| `--eps_mode` | `str` | 阈值模式：`absolute` 或 `relative_bbox` |
-| `--build_dir` | `str` | CGAL 桥接模块编译输出目录 |
-
----
-
-## ⚙️ 工作流原理
-
-本工具采用 **Python（灵活清理）+ CGAL（硬核几何修复）** 混合架构，全自动流转：
-
-```mermaid
-graph LR
-    A[📥 输入 OBJ] --> B
-
-    subgraph Python 预处理
-        B(焊接近重顶点\n清理退化/重复面)
-    end
-
-    B --> C{CGAL 检测\n自相交?}
-
-    C -->|存在自相交| D[Polygon_mesh_processing\n::autorefine 精确剖分]
-    C -->|拓扑合法| E[跳过修复]
-
-    D --> F
-    E --> F
-
-    subgraph Python 后处理
-        F(最终清理与验证)
-    end
-
-    F --> G[📤 输出干净 OBJ ✅]
-```
-
----
-
-## 📂 项目结构
-
-```
-assembly-mesh-repair/
-├── pipeline.py          # 主入口，串联全流程
-├── requirements.txt     # Python 依赖
-├── cgal_bridge/         # CGAL C++ 桥接模块（CMake 项目）
-│   ├── CMakeLists.txt
-│   └── autorefine_bridge.cpp
-├── tests/
-│   ├── data/            # 测试用损坏 OBJ 文件
-│   └── out/             # 修复结果输出目录
-└── docs/
-    └── images/          # README 配图
-```
-
----
-
-## ⚠️ 当前限制
-
-因本人水平有限，并为保持工具轻量专注，当前版本只适用于以下条件：
-
-- **仅支持纯几何 OBJ：** 暂不处理纹理坐标（`vt`）、法线（`vn`）、材质（`mtllib`）等附加信息
-- **独立文件处理：** 多个输入文件独立运算，不进行跨文件对齐或合并
-- **功能聚焦修复：** 专注于几何错误消除（Healing），不含平滑（Smoothing）或 CAD 语义重建
-- **仅支持三角面网格：** 输入多边形面将在预处理阶段自动三角化
-
----
-
-## 🤝 贡献 & 反馈
-
-欢迎提交 Issue 或 Pull Request！如遇到特定装配体文件无法修复的情况，请附上最小复现文件一并提交。
-
----
-
-## 📄 许可证
-
-本项目基于 [MIT License](LICENSE) 开源。
-
-记录当今的命令
+```bash
 python pipeline.py \
-  --input \
-  "tests/data/土块加底土（相互穿透、存在体积重叠）.obj" \
-  "tests/data/整体元素土块底土（存在共享接触面）.obj" \
-  "tests/data/基坑1.0（存在多部分贴合和局部重叠）.obj" \
-  "tests/data/基坑单元格未合并（存在多部分贴合和局部重叠）.obj" \
-  --output_dir tests/out/four_obj_repair_gmsh \
-  --eps_v 1e-9 \
-  --eps_mode relative_bbox \
-  --build_dir build/cgal \
-  --gmsh_refine \
-  --gmsh_target_edge_ratio 0.02 \
-  --gmsh_max_refine_levels 5 \
-  --report_json tests/out/four_obj_repair_gmsh/report.json
+  --input "tests/data/基坑1.0（存在多部分贴合和局部重叠）.obj" \
+  --output_dir tests/out \
+  --mode solid \
+  --report_json tests/out/report.json
+```
+
+修复开放表面并填补三角形、四边形小孔：
+
+```bash
+python pipeline.py \
+  --input tests/data/mixed_case.obj \
+  --output_dir tests/out \
+  --mode surface \
+  --fill_holes
+```
+
+精确实体合并失败，并且允许改变几何时，才能开启近似重建：
+
+```bash
+python pipeline.py \
+  --input tests/data/tri_cross.obj \
+  --output_dir tests/out \
+  --mode solid \
+  --approximate_rebuild \
+  --rebuild_resolution 50000
+```
+
+## 修复顺序
+
+```text
+读取 OBJ 和零件身份
+→ 按共享边拆分零件
+→ 每个零件内部清理
+→ 根据 mode 保留、拆分或合并
+→ 检查非流形边、非流形顶点、绕序、闭合性和正体积
+→ 验收失败就报错
+```
+
+`solid` 模式不会把失败伪装成成功。输入零件不是闭合正体积时，精确布尔运算会停止；只有显式开启 `--approximate_rebuild` 才允许 PCU 重新生成近似外壳。
+
+`surface` 模式处理组合拓扑，不执行开放曲面的精确三角形求交切分。严重自交三角汤需要明确选择近似重建。
+
+## 当前范围
+
+可以自动处理：
+
+- 重复或极近顶点；
+- 退化面、重复面、孤立顶点；
+- 面绕序不一致；
+- 非流形边和蝴蝶结顶点；
+- 同一开放曲面内的 T 型接头；
+- 三角形、四边形小孔；
+- 多个闭合零件的接触、穿透和体积重叠；
+- 严重三角汤的近似闭合重建。
+
+下面几类输入没有唯一精确答案：
+
+- 开放薄片要求自动猜测实体内外；
+- 大面积缺失表面；
+- 莫比乌斯结构；
+- 需要恢复 CAD 曲面和材料语义的模型。
+
+程序会保留开放表面、拒绝精确实体合并，或者由用户明确选择近似重建。
+
+## 测试
+
+```bash
+python -m pip install -r requirements-dev.txt
+python -m pytest -q
+```
+
+回归测试包含人工构造的非流形边、面扇、孔洞、近似重建，以及仓库中的四个真实装配体模型。

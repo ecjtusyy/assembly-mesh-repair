@@ -80,6 +80,56 @@ def build_edge_faces(F: np.ndarray) -> dict[Edge, list[int]]:
     return edge_faces
 
 
+def count_nonmanifold_vertices(F: np.ndarray) -> dict[str, object]:
+    """统计拥有多个独立面扇的顶点。"""
+
+    faces = _as_faces(F)
+    if len(faces) == 0:
+        return {"count": 0, "sample_vertex_ids": []}
+
+    edge_faces = build_edge_faces(faces)
+    incident: dict[int, list[int]] = {}
+    for face_id, face in enumerate(faces):
+        for vertex_id in face:
+            incident.setdefault(int(vertex_id), []).append(face_id)
+
+    bad_vertices: list[int] = []
+    for vertex_id, face_ids in incident.items():
+        neighbors = {face_id: set() for face_id in face_ids}
+        for face_id in face_ids:
+            for edge in _face_edges(faces[face_id]):
+                if vertex_id not in edge:
+                    continue
+                uses = edge_faces[edge]
+                if len(uses) == 2:
+                    a, b = uses
+                    neighbors[a].add(b)
+                    neighbors[b].add(a)
+
+        seen: set[int] = set()
+        fans = 0
+        for start in face_ids:
+            if start in seen:
+                continue
+            fans += 1
+            stack = [start]
+            seen.add(start)
+            while stack:
+                current = stack.pop()
+                for next_id in neighbors[current]:
+                    if next_id not in seen:
+                        seen.add(next_id)
+                        stack.append(next_id)
+
+        if fans > 1:
+            bad_vertices.append(vertex_id)
+
+    return {
+        "count": int(len(bad_vertices)),
+        "sample_vertex_ids": [int(x) for x in bad_vertices[:20]],
+    }
+
+
 def count_degenerate_faces(
     V: np.ndarray,
     F: np.ndarray,
@@ -258,6 +308,7 @@ def topology_summary(V: np.ndarray, F: np.ndarray) -> dict[str, object]:
     duplicates = count_duplicate_faces(faces)
     degenerates = count_degenerate_faces(vertices, faces)
     components = connected_components_by_edges(faces)
+    nonmanifold_vertices = count_nonmanifold_vertices(faces)
 
     return {
         "vertices": int(vertices.shape[0]),
@@ -265,6 +316,7 @@ def topology_summary(V: np.ndarray, F: np.ndarray) -> dict[str, object]:
         "edges": int(len(edge_faces)),
         "boundary_edges": int(len(boundary_edges)),
         "nonmanifold_edges": int(len(nonmanifold_edges)),
+        "nonmanifold_vertices": int(nonmanifold_vertices["count"]),
         "max_edge_incidence": int(max_edge_incidence),
         "duplicate_faces": int(duplicates["count"]),
         "degenerate_faces": int(degenerates["count"]),
@@ -273,6 +325,7 @@ def topology_summary(V: np.ndarray, F: np.ndarray) -> dict[str, object]:
         "face_component_id": [int(x) for x in components["face_component_id"]],
         "sample_boundary_edges": _sample_edges(boundary_edges),
         "sample_nonmanifold_edges": _sample_edges(nonmanifold_edges),
+        "sample_nonmanifold_vertices": nonmanifold_vertices["sample_vertex_ids"],
         "sample_duplicate_faces": [int(x) for x in duplicates["sample_face_ids"]],
         "sample_degenerate_faces": [int(x) for x in degenerates["sample_face_ids"]],
     }

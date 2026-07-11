@@ -1,24 +1,46 @@
 # -*- coding: utf-8 -*-
-"""OBJ 文件读写工具。
-
-实现的功能：
-- 读取顶点 v
-- 读取面 f
-- 支持 OBJ 常见索引格式：i、i/j、i/j/k、i//k
-- 支持负索引
-- 多边形面用扇形方式拆成三角形
-- 写出时只保存 v/f
-"""
+"""OBJ 读写。"""
 
 from __future__ import annotations
 
+from dataclasses import dataclass, field
 from pathlib import Path
-from typing import List, Tuple, Union
 
 import numpy as np
 
 
-PathLike = Union[str, Path]
+PathLike = str | Path
+
+
+@dataclass
+class ObjMesh:
+    """保存三角网格和每个面的 OBJ 身份。"""
+
+    V: np.ndarray
+    F: np.ndarray
+    face_object: list[str] = field(default_factory=list)
+    face_group: list[str] = field(default_factory=list)
+    face_material: list[str] = field(default_factory=list)
+
+    def __post_init__(self) -> None:
+        self.V = _normalize_vertices(self.V)
+        self.F = _normalize_faces(self.F, len(self.V))
+
+        n_faces = len(self.F)
+        if not self.face_object:
+            self.face_object = ["default"] * n_faces
+        if not self.face_group:
+            self.face_group = ["default"] * n_faces
+        if not self.face_material:
+            self.face_material = [""] * n_faces
+
+        for name, values in (
+            ("face_object", self.face_object),
+            ("face_group", self.face_group),
+            ("face_material", self.face_material),
+        ):
+            if len(values) != n_faces:
+                raise ValueError(f"{name} 数量必须等于面数")
 
 
 def _empty_vertices() -> np.ndarray:
@@ -29,93 +51,61 @@ def _empty_faces() -> np.ndarray:
     return np.zeros((0, 3), dtype=np.int64)
 
 
-def _loc(path: Path, line_no: int) -> str:
-    return f"{path}:{line_no}"
-
-
-def _strip_comment(line: str) -> str:
-    """去掉 OBJ 行内注释。"""
-    return line.split("#", 1)[0].strip()
-
-
-def _parse_face_index(token: str, vertex_count: int, *, path: Path, line_no: int) -> int:
-    """把 OBJ 面索引转换成 Python 的 0-based 顶点索引。"""
-    head = token.split("/", 1)[0]
-    if not head:
-        raise ValueError(f"面索引为空: {_loc(path, line_no)}: {token!r}")
-
-    try:
-        raw_idx = int(head)
-    except ValueError as exc:
-        raise ValueError(f"面索引不是整数: {_loc(path, line_no)}: {token!r}") from exc
-
-    if raw_idx == 0:
-        raise ValueError(f"OBJ 不允许使用顶点索引 0: {_loc(path, line_no)}: {token!r}")
-
-    # OBJ 正索引从 1 开始；负索引表示从当前已有顶点末尾倒数。
-    idx = raw_idx - 1 if raw_idx > 0 else vertex_count + raw_idx
-
-    if idx < 0 or idx >= vertex_count:
-        raise ValueError(
-            f"面索引越界: {_loc(path, line_no)}: "
-            f"{token!r}, 当前顶点数={vertex_count}"
-        )
-
-    return idx
-
-
 def _normalize_vertices(V: np.ndarray) -> np.ndarray:
-    """检查并统一顶点数组形状。"""
-    V = np.asarray(V, dtype=np.float64)
-
-    if V.size == 0:
+    vertices = np.asarray(V, dtype=np.float64)
+    if vertices.size == 0:
         return _empty_vertices()
-
-    if V.ndim != 2 or V.shape[1] != 3:
-        raise ValueError(f"V 必须是形状为 (N, 3) 的数组，当前是 {V.shape}")
-
-    if not np.all(np.isfinite(V)):
+    if vertices.ndim != 2 or vertices.shape[1] != 3:
+        raise ValueError(f"V 必须是 (N, 3) 数组，当前是 {vertices.shape}")
+    if not np.all(np.isfinite(vertices)):
         raise ValueError("V 中存在 NaN 或 Inf")
-
-    return V
+    return vertices
 
 
 def _normalize_faces(F: np.ndarray, vertex_count: int) -> np.ndarray:
-    """检查并统一三角面数组形状。"""
-    F = np.asarray(F, dtype=np.int64)
-
-    if F.size == 0:
+    faces = np.asarray(F, dtype=np.int64)
+    if faces.size == 0:
         return _empty_faces()
-
-    if F.ndim != 2 or F.shape[1] != 3:
-        raise ValueError(f"F 必须是形状为 (M, 3) 的数组，当前是 {F.shape}")
-
-    min_idx = int(F.min())
-    max_idx = int(F.max())
-
-    if min_idx < 0 or max_idx >= vertex_count:
-        raise ValueError(
-            f"F 中存在越界顶点索引: "
-            f"min={min_idx}, max={max_idx}, 顶点数={vertex_count}"
-        )
-
-    return F
+    if faces.ndim != 2 or faces.shape[1] != 3:
+        raise ValueError(f"F 必须是 (M, 3) 数组，当前是 {faces.shape}")
+    if int(faces.min()) < 0 or int(faces.max()) >= vertex_count:
+        raise ValueError("F 中存在越界顶点索引")
+    return faces
 
 
-def load_obj(path: PathLike) -> Tuple[np.ndarray, np.ndarray]:
-    """读取 OBJ 文件，返回顶点数组 V 和三角面数组 F。
+def _face_index(token: str, vertex_count: int, path: Path, line_no: int) -> int:
+    head = token.split("/", 1)[0]
+    try:
+        raw = int(head)
+    except ValueError as exc:
+        raise ValueError(f"{path}:{line_no} 面索引无效：{token!r}") from exc
 
-    V 的形状是 (N, 3)，类型为 float64。
-    F 的形状是 (M, 3)，类型为 int64，索引从 0 开始。
-    """
+    if raw == 0:
+        raise ValueError(f"{path}:{line_no} OBJ 索引不能为 0")
+
+    index = raw - 1 if raw > 0 else vertex_count + raw
+    if index < 0 or index >= vertex_count:
+        raise ValueError(f"{path}:{line_no} 面索引越界：{token!r}")
+    return index
+
+
+def load_obj_data(path: PathLike) -> ObjMesh:
+    """读取 OBJ，同时保留 o、g、usemtl。"""
+
     path = Path(path)
+    vertices: list[list[float]] = []
+    faces: list[list[int]] = []
+    face_object: list[str] = []
+    face_group: list[str] = []
+    face_material: list[str] = []
 
-    vertices: List[List[float]] = []
-    faces: List[List[int]] = []
+    current_object = "default"
+    current_group = "default"
+    current_material = ""
 
-    with path.open("r", encoding="utf-8") as f:
-        for line_no, raw_line in enumerate(f, start=1):
-            line = _strip_comment(raw_line)
+    with path.open("r", encoding="utf-8", errors="replace") as stream:
+        for line_no, raw_line in enumerate(stream, start=1):
+            line = raw_line.split("#", 1)[0].strip()
             if not line:
                 continue
 
@@ -124,64 +114,89 @@ def load_obj(path: PathLike) -> Tuple[np.ndarray, np.ndarray]:
 
             if record == "v":
                 if len(parts) < 4:
-                    raise ValueError(f"顶点行不完整: {_loc(path, line_no)}: {raw_line.rstrip()}")
-
-                try:
-                    vertices.append([
-                        float(parts[1]),
-                        float(parts[2]),
-                        float(parts[3]),
-                    ])
-                except ValueError as exc:
-                    raise ValueError(
-                        f"顶点坐标不是有效数字: {_loc(path, line_no)}: {raw_line.rstrip()}"
-                    ) from exc
-
-            elif record == "f":
-                if len(parts) < 4:
-                    raise ValueError(f"面的顶点数少于 3 个: {_loc(path, line_no)}")
-
-                ids = [
-                    _parse_face_index(tok, len(vertices), path=path, line_no=line_no)
-                    for tok in parts[1:]
-                ]
-
-                # 多边形面用简单扇形剖分拆成三角形。
-                for i in range(1, len(ids) - 1):
-                    faces.append([ids[0], ids[i], ids[i + 1]])
-
-            else:
-                # 当前修复流程只需要 v/f，其它 OBJ 记录暂时忽略。
+                    raise ValueError(f"{path}:{line_no} 顶点行不完整")
+                vertices.append([float(parts[1]), float(parts[2]), float(parts[3])])
                 continue
 
-    V = _empty_vertices() if not vertices else np.asarray(vertices, dtype=np.float64)
-    F = _empty_faces() if not faces else np.asarray(faces, dtype=np.int64)
+            if record == "o":
+                current_object = " ".join(parts[1:]) or "default"
+                continue
 
-    return V, F
+            if record == "g":
+                current_group = " ".join(parts[1:]) or "default"
+                continue
+
+            if record == "usemtl":
+                current_material = " ".join(parts[1:])
+                continue
+
+            if record != "f":
+                continue
+
+            if len(parts) < 4:
+                raise ValueError(f"{path}:{line_no} 面的顶点数少于 3")
+
+            ids = [
+                _face_index(token, len(vertices), path, line_no)
+                for token in parts[1:]
+            ]
+
+            for i in range(1, len(ids) - 1):
+                faces.append([ids[0], ids[i], ids[i + 1]])
+                face_object.append(current_object)
+                face_group.append(current_group)
+                face_material.append(current_material)
+
+    V = np.asarray(vertices, dtype=np.float64) if vertices else _empty_vertices()
+    F = np.asarray(faces, dtype=np.int64) if faces else _empty_faces()
+    return ObjMesh(V, F, face_object, face_group, face_material)
+
+
+def load_obj(path: PathLike) -> tuple[np.ndarray, np.ndarray]:
+    """兼容原接口，只返回 V/F。"""
+
+    mesh = load_obj_data(path)
+    return mesh.V, mesh.F
 
 
 def save_obj(path: PathLike, V: np.ndarray, F: np.ndarray) -> None:
-    """保存最小 OBJ 文件，只写出 v 和三角形 f。"""
+    """保存最小 OBJ。"""
+
+    save_obj_data(path, ObjMesh(V, F))
+
+
+def save_obj_data(path: PathLike, mesh: ObjMesh) -> None:
+    """保存 OBJ，并写出面所属零件。"""
+
     path = Path(path)
-
-    V = _normalize_vertices(V)
-    F = _normalize_faces(F, vertex_count=V.shape[0])
-
     path.parent.mkdir(parents=True, exist_ok=True)
 
-    with path.open("w", encoding="utf-8") as f:
-        for x, y, z in V:
-            f.write(f"v {x:.17g} {y:.17g} {z:.17g}\n")
+    with path.open("w", encoding="utf-8") as stream:
+        for x, y, z in mesh.V:
+            stream.write(f"v {x:.17g} {y:.17g} {z:.17g}\n")
 
-        for a, b, c in F:
-            f.write(f"f {int(a) + 1} {int(b) + 1} {int(c) + 1}\n")
+        last_object = None
+        last_group = None
+        last_material = None
+
+        for face_id, (a, b, c) in enumerate(mesh.F):
+            object_name = mesh.face_object[face_id]
+            group_name = mesh.face_group[face_id]
+            material_name = mesh.face_material[face_id]
+
+            if object_name != last_object:
+                stream.write(f"o {object_name}\n")
+                last_object = object_name
+            if group_name != last_group:
+                stream.write(f"g {group_name}\n")
+                last_group = group_name
+            if material_name != last_material:
+                if material_name:
+                    stream.write(f"usemtl {material_name}\n")
+                last_material = material_name
+
+            stream.write(f"f {int(a) + 1} {int(b) + 1} {int(c) + 1}\n")
 
 
-def read_obj(path: PathLike) -> Tuple[np.ndarray, np.ndarray]:
-    """load_obj 的兼容别名。"""
-    return load_obj(path)
-
-
-def write_obj(path: PathLike, V: np.ndarray, F: np.ndarray) -> None:
-    """save_obj 的兼容别名。"""
-    save_obj(path, V, F)
+read_obj = load_obj
+write_obj = save_obj

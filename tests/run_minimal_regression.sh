@@ -1,34 +1,14 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-ROOT_DIR=$(cd "$(dirname "$0")/.." && pwd)
-cd "$ROOT_DIR"
+python -m pytest -q
 
-cmake -S cgal_bridge -B build/cgal
-cmake --build build/cgal -j
-
-python3 -m unittest tests.test_python_cleanup -v
-
-mkdir -p tests/out/minimal_suite
-
-./build/cgal/check_self_intersections tests/data/clean_tri.obj --list_pairs
-./build/cgal/check_self_intersections tests/data/dup_vertex.obj --list_pairs
-./build/cgal/check_self_intersections tests/data/tri_cross.obj --list_pairs
-./build/cgal/check_self_intersections tests/data/shared_point_multi_intersection.obj --list_pairs
-./build/cgal/check_self_intersections tests/data/mixed_case.obj --list_pairs
-
-python3 pipeline.py \
+python pipeline.py \
   --input \
-    tests/data/clean_tri.obj \
-    tests/data/dup_vertex.obj \
-    tests/data/tri_cross.obj \
-    tests/data/shared_point_multi_intersection.obj \
-    tests/data/mixed_case.obj \
-  --output_dir tests/out/minimal_suite \
-  --report_json tests/out/minimal_suite/report.json
-
-./build/cgal/check_self_intersections tests/out/minimal_suite/clean_tri_repaired.obj --list_pairs
-./build/cgal/check_self_intersections tests/out/minimal_suite/dup_vertex_repaired.obj --list_pairs
-./build/cgal/check_self_intersections tests/out/minimal_suite/tri_cross_repaired.obj --list_pairs
-./build/cgal/check_self_intersections tests/out/minimal_suite/shared_point_multi_intersection_repaired.obj --list_pairs
-./build/cgal/check_self_intersections tests/out/minimal_suite/mixed_case_repaired.obj --list_pairs
+  "tests/data/土块加底土（相互穿透、存在体积重叠）.obj" \
+  "tests/data/整体元素土块底土（存在共享接触面）.obj" \
+  "tests/data/基坑1.0（存在多部分贴合和局部重叠）.obj" \
+  "tests/data/基坑单元格未合并（存在多部分贴合和局部重叠）.obj" \
+  --output_dir tests/out/solid_regression \
+  --mode solid \
+  --report_json tests/out/solid_regression/report.json

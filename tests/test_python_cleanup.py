@@ -23,7 +23,7 @@ class PythonCleanupTests(unittest.TestCase):
         # 读取一个本来就是干净的三角形
         V, F = load_obj(DATA / "clean_tri.obj")
 
-        # 只运行 Python 预清理，不调用 CGAL
+        # 只运行基础清理
         mesh_dict, report, _eps_abs = python_cleanup_only(
             {"V": V, "F": F},
             eps_v=1e-9,
@@ -77,7 +77,7 @@ class PythonCleanupTests(unittest.TestCase):
         # mixed_case 用来测试稍微复杂一点的预清理情况
         V, F = load_obj(DATA / "mixed_case.obj")
 
-        # 这里只检查 Python cleanup 的效果，不检查 CGAL 自相交修复
+        # 这里只检查 cleanup 的效果
         mesh_dict, report, _eps_abs = python_cleanup_only(
             {"V": V, "F": F},
             eps_v=1e-12,
