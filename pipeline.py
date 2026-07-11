@@ -34,6 +34,12 @@ def build_parser() -> argparse.ArgumentParser:
         help="精确实体合并失败时允许近似重建",
     )
     parser.add_argument("--rebuild_resolution", type=int, default=50000)
+    parser.add_argument(
+        "--uniform_refine_levels",
+        type=int,
+        default=0,
+        help="Gmsh 均匀细分级数，每一级把一个三角形拆成四个",
+    )
     parser.add_argument("--report_json", default=None, help="汇总报告路径")
     return parser
 
@@ -49,9 +55,11 @@ def repair_one_obj(input_path: Path, output_dir: Path, args: argparse.Namespace)
         max_hole_edges=args.max_hole_edges,
         approximate_rebuild=args.approximate_rebuild,
         rebuild_resolution=args.rebuild_resolution,
+        uniform_refine_levels=args.uniform_refine_levels,
     )
 
-    output_path = output_dir / f"{input_path.stem}_{args.mode}_repaired.obj"
+    suffix = f"_gmsh_l{args.uniform_refine_levels}" if args.uniform_refine_levels else ""
+    output_path = output_dir / f"{input_path.stem}_{args.mode}_repaired{suffix}.obj"
     save_obj_data(output_path, output)
 
     result = report.as_dict()

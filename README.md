@@ -1,6 +1,6 @@
 # assembly-mesh-repair
 
-装配体三角网格修复工具。主程序只写 Python，精确实体布尔运算由 Manifold3D 的 Python wheel 完成，不需要配置 CGAL、CMake 和 Gmsh。
+装配体三角网格修复工具。主程序只写 Python，精确实体布尔运算由 Manifold3D 的 Python wheel 完成，不需要配置 CGAL 和 CMake。Gmsh 只在用户要求均匀细分时安装。
 
 ## 三种模式
 
@@ -24,6 +24,19 @@ python -m pip install -r requirements.txt
 python -m pip install -r requirements-approx.txt
 ```
 
+需要 Gmsh 均匀细分时再安装：
+
+```bash
+python -m pip install -r requirements-gmsh.txt
+```
+
+Ubuntu 或 Codespaces 如果提示缺少 `libGLU.so.1` 或 `libXft.so.2`：
+
+```bash
+sudo apt-get update
+sudo apt-get install -y libglu1-mesa libxft2
+```
+
 ## 使用
 
 保留装配体：
@@ -45,6 +58,18 @@ python pipeline.py \
   --mode solid \
   --report_json tests/out/report.json
 ```
+
+合并后使用 Gmsh 做一级均匀细分：
+
+```bash
+python pipeline.py \
+  --input "tests/data/基坑1.0（存在多部分贴合和局部重叠）.obj" \
+  --output_dir tests/out \
+  --mode solid \
+  --uniform_refine_levels 1
+```
+
+一级细分把每个三角形拆成 4 个，二级细分拆成 16 个。程序在细分前后都会重新验收，确保细分没有引入非流形边、非流形点、孔洞和体积错误。
 
 修复开放表面并填补三角形、四边形小孔：
 
@@ -112,6 +137,13 @@ python -m pytest -q
 ```
 
 回归测试包含人工构造的非流形边、面扇、孔洞、近似重建，以及仓库中的四个真实装配体模型。
+
+包含 Gmsh 的完整测试：
+
+```bash
+python -m pip install -r requirements-dev.txt -r requirements-gmsh.txt
+python -m pytest -q
+```
 
 ## 可视化验证
 

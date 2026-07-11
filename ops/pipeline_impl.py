@@ -29,8 +29,12 @@ class RepairRunReport:
     eps_v_abs: float
     input_topology: dict[str, object]
     part_reports: list[dict[str, object]] = field(default_factory=list)
+    pre_refine_validation: dict[str, object] = field(default_factory=dict)
     output_validation: dict[str, object] = field(default_factory=dict)
     approximate_rebuild: bool = False
+    uniform_refine_levels: int = 0
+    pre_refine_faces: int | None = None
+    post_refine_faces: int | None = None
     warnings: list[str] = field(default_factory=list)
     status: str = "unknown"
 
@@ -40,8 +44,12 @@ class RepairRunReport:
             "eps_v_abs": self.eps_v_abs,
             "input_topology": self.input_topology,
             "part_reports": self.part_reports,
+            "pre_refine_validation": self.pre_refine_validation,
             "output_validation": self.output_validation,
             "approximate_rebuild": self.approximate_rebuild,
+            "uniform_refine_levels": self.uniform_refine_levels,
+            "pre_refine_faces": self.pre_refine_faces,
+            "post_refine_faces": self.post_refine_faces,
             "warnings": self.warnings,
             "status": self.status,
         }
@@ -208,6 +216,36 @@ def _rebuild_watertight(mesh: ObjMesh, resolution: int) -> ObjMesh:
     )
 
 
+def _finish_output(
+    output: ObjMesh,
+    report: RepairRunReport,
+    *,
+    require_volume: bool,
+    uniform_refine_levels: int,
+) -> ObjMesh:
+    """细分前后各验收一次。"""
+
+    before = validate_mesh(output, require_volume=require_volume)
+    require_valid(before, "pre_refine")
+    report.pre_refine_validation = before
+
+    levels = int(uniform_refine_levels)
+    if levels < 0:
+        raise ValueError("uniform_refine_levels 不能为负数")
+
+    report.uniform_refine_levels = levels
+    report.pre_refine_faces = int(len(output.F))
+    if levels:
+        from ops.gmsh_refine import uniform_refine
+
+        output = uniform_refine(output, levels=levels)
+
+    report.post_refine_faces = int(len(output.F))
+    report.output_validation = validate_mesh(output, require_volume=require_volume)
+    require_valid(report.output_validation, "post_refine")
+    return output
+
+
 def repair_mesh_data(
     mesh: ObjMesh,
     *,
@@ -218,6 +256,7 @@ def repair_mesh_data(
     max_hole_edges: int = 4,
     approximate_rebuild: bool = False,
     rebuild_resolution: int = 50000,
+    uniform_refine_levels: int = 0,
 ) -> tuple[ObjMesh, RepairRunReport]:
     """按用户意图修复网格。"""
 
@@ -241,8 +280,12 @@ def repair_mesh_data(
 
     if mode in {"assembly", "surface"}:
         output = combine_parts(parts)
-        report.output_validation = validate_mesh(output, require_volume=False)
-        require_valid(report.output_validation, mode)
+        output = _finish_output(
+            output,
+            report,
+            require_volume=False,
+            uniform_refine_levels=uniform_refine_levels,
+        )
         report.warnings.append("surface 模式允许边界，不判断开放曲面的实体内外。")
         report.warnings.append("surface 模式不执行开放曲面的精确自交切分。")
         report.status = "success"
@@ -260,8 +303,12 @@ def repair_mesh_data(
         report.approximate_rebuild = True
         report.warnings.append("已使用近似重建，输出顶点不再与输入一一对应。")
 
-    report.output_validation = validate_mesh(output, require_volume=True)
-    require_valid(report.output_validation, "solid")
+    output = _finish_output(
+        output,
+        report,
+        require_volume=True,
+        uniform_refine_levels=uniform_refine_levels,
+    )
     report.status = "success"
     return output, report
 
@@ -276,6 +323,7 @@ def repair_single_mesh(
     max_hole_edges: int = 4,
     approximate_rebuild: bool = False,
     rebuild_resolution: int = 50000,
+    uniform_refine_levels: int = 0,
     **_legacy: object,
 ) -> tuple[MeshDict, RepairRunReport]:
     """兼容原 V/F 调用接口。"""
@@ -292,5 +340,6 @@ def repair_single_mesh(
         max_hole_edges=max_hole_edges,
         approximate_rebuild=approximate_rebuild,
         rebuild_resolution=rebuild_resolution,
+        uniform_refine_levels=uniform_refine_levels,
     )
     return {"V": output.V, "F": output.F}, report
