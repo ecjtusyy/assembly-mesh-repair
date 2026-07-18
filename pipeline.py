@@ -8,7 +8,12 @@ from pathlib import Path
 
 from mesh.io_obj import load_obj_data, save_obj_data
 from ops.pipeline_impl import repair_mesh_data
+from ops.validation import require_valid, validate_mesh
 from volume.gmsh_tetra import TetrahedralizationOptions, tetrahedralize
+from volume.tetgen_tetra import (
+    StrictTetrahedralizationOptions,
+    tetrahedralize_strict,
+)
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -27,8 +32,17 @@ def build_parser() -> argparse.ArgumentParser:
         choices=("absolute", "relative_bbox"),
         default="relative_bbox",
     )
-    parser.add_argument("--fill_holes", action="store_true", help="填补三角形和四边形小孔")
-    parser.add_argument("--max_hole_edges", type=int, default=4, help="自动补洞的最大边数")
+    parser.add_argument(
+        "--fill_holes",
+        action="store_true",
+        help="填补三角形和四边形小孔",
+    )
+    parser.add_argument(
+        "--max_hole_edges",
+        type=int,
+        default=4,
+        help="自动补洞的最大边数",
+    )
     parser.add_argument(
         "--approximate_rebuild",
         action="store_true",
@@ -47,10 +61,19 @@ def build_parser() -> argparse.ArgumentParser:
         help="在 solid 表面验收后生成单区域四面体体网格",
     )
     parser.add_argument(
+        "--tetra_mode",
+        choices=("strict", "relaxed"),
+        default="strict",
+        help="strict 完全锁定输入边界；relaxed 允许容差内表面修复",
+    )
+    parser.add_argument(
         "--target_size",
         type=float,
         default=0.0,
-        help="目标单元尺寸；0 表示包围盒对角线的 1/8",
+        help=(
+            "目标单元尺寸；strict 中 0 表示不设尺寸硬阈值，"
+            "relaxed 中 0 表示包围盒对角线的 1/8"
+        ),
     )
     parser.add_argument(
         "--surface_angle",
@@ -79,7 +102,25 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--no_tet_optimize",
         action="store_true",
-        help="关闭 Gmsh Netgen 四面体质量优化",
+        help="关闭四面体质量优化",
+    )
+    parser.add_argument(
+        "--tetgen_radius_edge_ratio",
+        type=float,
+        default=2.0,
+        help="TetGen 最大半径边比，越接近 1 要求越严格",
+    )
+    parser.add_argument(
+        "--tetgen_min_dihedral",
+        type=float,
+        default=0.0,
+        help="TetGen 最小二面角要求（度）",
+    )
+    parser.add_argument(
+        "--max_steiner_points",
+        type=int,
+        default=10000,
+        help="严格模式最多允许增加的内部节点数",
     )
     parser.add_argument("--report_json", default=None, help="汇总报告路径")
     return parser
@@ -93,6 +134,24 @@ def repair_one_obj(
     mesh = load_obj_data(input_path)
     if args.tetrahedralize and args.mode != "solid":
         raise ValueError("--tetrahedralize 只能与 --mode solid 一起使用")
+
+    strict_validation: dict[str, object] | None = None
+    if args.tetrahedralize and args.tetra_mode == "strict":
+        if args.eps_v != 0.0 or args.fill_holes or args.approximate_rebuild:
+            raise ValueError(
+                "strict 模式禁止焊点、补洞和近似重建；"
+                "请先提供合法闭合边界"
+            )
+        if args.uniform_refine_levels:
+            raise ValueError(
+                "strict 模式禁止改变输入边界三角形；不能同时均匀细分表面"
+            )
+        strict_validation = validate_mesh(
+            mesh,
+            require_volume=True,
+            check_self_intersections=True,
+        )
+        require_valid(strict_validation, "strict_boundary_input")
 
     materials = sorted({name for name in mesh.face_material if name})
     if args.tetrahedralize and len(materials) > 1:
@@ -121,22 +180,44 @@ def repair_one_obj(
     result["input"] = str(input_path)
     result["output"] = str(output_path)
     result["input_materials"] = materials
+    if strict_validation is not None:
+        result["strict_input_validation"] = strict_validation
     if args.tetrahedralize:
         base = output_dir / f"{input_path.stem}_{args.mode}"
-        _, volume_report = tetrahedralize(
-            output,
-            base.with_name(base.name + "_volume.msh"),
-            base.with_name(base.name + "_quality.vtk"),
-            options=TetrahedralizationOptions(
-                target_size=args.target_size,
-                surface_angle=args.surface_angle,
-                min_quality=args.min_tet_quality,
-                max_relative_deviation=args.max_geometry_deviation_rel,
-                max_relative_volume_error=args.max_volume_error_rel,
-                optimize=not args.no_tet_optimize,
-            ),
-            domain_name=materials[0] if len(materials) == 1 else "domain",
-        )
+        msh_path = base.with_name(base.name + "_volume.msh")
+        vtk_path = base.with_name(base.name + "_quality.vtk")
+        domain_name = materials[0] if len(materials) == 1 else "domain"
+        if args.tetra_mode == "strict":
+            _, volume_report = tetrahedralize_strict(
+                output,
+                msh_path,
+                vtk_path,
+                options=StrictTetrahedralizationOptions(
+                    target_size=args.target_size,
+                    min_quality=args.min_tet_quality,
+                    max_relative_volume_error=args.max_volume_error_rel,
+                    radius_edge_ratio=args.tetgen_radius_edge_ratio,
+                    min_dihedral=args.tetgen_min_dihedral,
+                    max_steiner_points=args.max_steiner_points,
+                    optimize=not args.no_tet_optimize,
+                ),
+                domain_name=domain_name,
+            )
+        else:
+            _, volume_report = tetrahedralize(
+                output,
+                msh_path,
+                vtk_path,
+                options=TetrahedralizationOptions(
+                    target_size=args.target_size,
+                    surface_angle=args.surface_angle,
+                    min_quality=args.min_tet_quality,
+                    max_relative_deviation=args.max_geometry_deviation_rel,
+                    max_relative_volume_error=args.max_volume_error_rel,
+                    optimize=not args.no_tet_optimize,
+                ),
+                domain_name=domain_name,
+            )
         result["volume_mesh"] = volume_report
         if not bool(volume_report["success"]):
             result["status"] = "failed"

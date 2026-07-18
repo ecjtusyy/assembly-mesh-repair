@@ -40,7 +40,9 @@ def mean_ratio_quality(mesh: TetraMesh, six_volumes: np.ndarray | None = None) -
     )
 
 
-def _derived_boundary_faces(tets: np.ndarray) -> np.ndarray:
+def boundary_faces_from_tets(tets: np.ndarray) -> np.ndarray:
+    """提取只被一个四面体使用的边界三角面。"""
+
     faces = np.vstack(
         [
             tets[:, [0, 2, 1]],
@@ -57,7 +59,7 @@ def _derived_boundary_faces(tets: np.ndarray) -> np.ndarray:
 
 
 def _boundary_mismatch(mesh: TetraMesh) -> tuple[int, int]:
-    derived = {tuple(row) for row in _derived_boundary_faces(mesh.T)}
+    derived = {tuple(row) for row in boundary_faces_from_tets(mesh.T)}
     exported = {tuple(row) for row in np.sort(mesh.boundary_faces, axis=1)}
     return len(derived - exported), len(exported - derived)
 

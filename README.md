@@ -1,6 +1,6 @@
 # assembly-mesh-repair
 
-装配体三角网格修复与单区域四面体生成工具。主程序使用 Python，精确实体布尔运算由 Manifold3D 的 Python wheel 完成，不需要配置 CGAL 和 CMake。Gmsh 用于可选的表面均匀细分和真实四面体体网格生成。
+装配体三角网格修复与单区域四面体生成工具。主程序使用 Python，精确实体布尔运算由 Manifold3D 的 Python wheel 完成，不需要配置 CGAL 和 CMake。TetGen 用于默认的边界锁定四面体生成，Gmsh 用于可选的表面细分和允许容差修复的体网格生成。
 
 ## 三种模式
 
@@ -24,7 +24,13 @@ python -m pip install -r requirements.txt
 python -m pip install -r requirements-approx.txt
 ```
 
-需要 Gmsh 均匀细分或四面体生成时再安装：
+需要边界锁定四面体生成时安装：
+
+```bash
+python -m pip install -r requirements-tetgen.txt
+```
+
+需要 Gmsh 均匀细分或宽松四面体生成时再安装：
 
 ```bash
 python -m pip install -r requirements-gmsh.txt
@@ -71,31 +77,51 @@ python pipeline.py \
 
 一级细分把每个三角形拆成 4 个，二级细分拆成 16 个。程序在细分前后都会重新验收，确保细分没有引入非流形边、非流形点、孔洞和体积错误。
 
-从修复后的闭合表面生成并验收四面体体网格：
+从已经合法的闭合表面生成边界锁定四面体体网格：
 
 ```bash
 python pipeline.py \
-  --input "tests/data/整体元素土块底土（存在共享接触面）.obj" \
-  --output_dir tests/out \
+  --input examples/closed_tetra.obj \
+  --output_dir out \
   --mode solid \
   --tetrahedralize \
-  --target_size 0.5 \
+  --tetra_mode strict \
   --min_tet_quality 0.05 \
-  --max_geometry_deviation_rel 1e-6 \
-  --max_volume_error_rel 1e-6 \
-  --report_json tests/out/report.json
+  --report_json out/report.json
 ```
 
-`target_size=0` 时使用包围盒对角线的 `1/8`。输出包括：
+`strict` 是默认模式。它禁止焊点、补洞、表面重分和近似重建，并使用 TetGen 的边界保护选项。输出边界必须满足：
+
+- 原始顶点坐标逐字节相等；
+- 原始三角面的三个顶点编号相同，允许输出调整面顺序和朝向；
+- 边界上没有新增 Steiner 点；
+- OBJ 的 `g` 边界分组写入 `.msh` 物理组；没有有效 `g` 时使用 `o`；
+- JSON 中输入、输出边界的 SHA-256 必须一致。
+
+因此严格模式只会在实体内部增加节点。输入边界不合法或固定边界限制了四面体质量时，程序会失败并报告原因，不会改成另一个模型。
+
+严格模式中 `target_size=0` 表示不设置单元尺寸硬阈值。若显式指定尺寸，程序会同时检查实际最大四面体体积；固定边界使目标无法达到时，报告 `tetra_size_above_target`。宽松模式中 `target_size=0` 使用包围盒对角线的 `1/8`。输出包括：
 
 - `*_solid_repaired.obj`：体网格使用的已验收边界；
-- `*_solid_volume.msh`：带 `domain` 和 `boundary` 物理组的一阶四面体；
+- `*_solid_volume.msh`：带体区域和原始边界分组的一阶四面体；
 - `*_solid_quality.vtk`：每个四面体的 `mean_ratio`，可用 ParaView 查看；
 - JSON 报告：硬有效性、质量阈值、几何偏差和体积一致性证据。
 
 第一阶段故意只支持单区域。输入有多个非空 `usemtl` 时程序会拒绝生成体网格，因为把材料界面直接并入一个 `domain` 会改变有限元问题。
 
-体网格前处理会从相对包围盒 `1e-7` 开始，自适应降低近点焊接容差，选择仍然闭合、流形且无自交的最大安全值。若几何中存在无法在允许偏差内消除的超薄区域，程序会保留 `.msh` 和质量 `.vtk`，但在 JSON 中标记 `tetra_quality_below_threshold`，不会把低质量网格写成成功。
+如果原始 OBJ 不是合法闭合实体，必须先单独修复并由用户确认修复后的几何。只有用户明确允许表面在给定容差内变化时，才能选择 Gmsh 宽松模式：
+
+```bash
+python pipeline.py \
+  --input model.obj \
+  --output_dir out \
+  --mode solid \
+  --tetrahedralize \
+  --tetra_mode relaxed \
+  --max_geometry_deviation_rel 1e-6
+```
+
+宽松模式会进行近点处理和 Gmsh 离散曲面重建，所以不能宣称外边界完全不变。严格和宽松结果都要经过翻转、退化、重复单元、体边界、体积和质量验收。
 
 修复开放表面并填补三角形、四边形小孔：
 
@@ -132,21 +158,22 @@ python pipeline.py \
 开启 `--tetrahedralize` 后继续执行：
 
 ```text
-闭合表面自相交检查
-→ Gmsh 离散曲面分类和几何重建
-→ 单区域四面体生成
-→ Netgen 质量优化
+原始闭合边界验收
+→ TetGen 边界保护四面体生成
+→ 输入/输出边界逐点逐面和 SHA-256 对比
 → 翻转、零体积、重复单元和边界一致性检查
-→ mean-ratio、双向表面偏差和总体积误差验收
+→ mean-ratio 和总体积误差验收
 → 验收通过才标记 success
 ```
 
 四面体的 `mean-ratio` 在 `0` 到 `1` 之间，正四面体为 `1`。程序把两类结论分开：
 
 - 硬错误：翻转、零体积、重复四面体、体边界不一致；
-- 可配置阈值：最低 `mean-ratio` 和最大相对几何偏差。
+- 可配置阈值：最低 `mean-ratio` 和最大相对体积误差。
 
-OBJ 的闭合三角表面可以交给 Gmsh 生成四面体，但“Gmsh 能生成”不等于“网格可用于可信有限元”。本项目因此保留生成前后的独立验收；它只能降低由离散网格本身引起的错误，不能证明材料参数、载荷、边界条件、本构模型和求解算法正确。
+`--tetra_mode relaxed` 才会改用 Gmsh，并额外检查双向表面偏差。
+
+OBJ 的闭合三角表面可以交给 TetGen 或 Gmsh 生成四面体，但“能够生成”不等于“网格可用于可信有限元”。本项目因此保留生成前后的独立验收；它只能降低由离散网格本身引起的错误，不能证明材料参数、载荷、边界条件、本构模型和求解算法正确。
 
 `solid` 模式不会把失败伪装成成功。输入零件不是闭合正体积时，精确布尔运算会停止；只有显式开启 `--approximate_rebuild` 才允许 PCU 重新生成近似外壳。
 
@@ -185,14 +212,17 @@ python -m pytest -q
 
 回归测试包含人工构造的非流形边、面扇、孔洞、近似重建，以及仓库中的四个真实装配体模型。
 
-包含 Gmsh 的完整测试：
+包含严格模式和 Gmsh 宽松模式的完整测试：
 
 ```bash
-python -m pip install -r requirements-dev.txt -r requirements-gmsh.txt
+python -m pip install \
+  -r requirements-dev.txt \
+  -r requirements-tetgen.txt \
+  -r requirements-gmsh.txt
 python -m pytest -q
 ```
 
-完整测试还包含真实 Gmsh 四面体生成，并验证 `.msh`、质量 `.vtk`、单元方向、边界一致性、几何偏差和体积误差。
+完整测试包含 TetGen 边界锁定和真实 Gmsh 四面体生成，并验证 `.msh`、质量 `.vtk`、物理分组、单元方向、边界一致性、几何偏差和体积误差。
 
 ## 可视化验证
 

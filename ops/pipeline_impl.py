@@ -294,6 +294,39 @@ def repair_mesh_data(
         input_topology=topology_summary(mesh.V, mesh.F),
     )
 
+    preserve_input_boundary = (
+        eps_v_abs == 0.0
+        and not fill_holes
+        and not approximate_rebuild
+        and uniform_refine_levels == 0
+    )
+    if mode == "solid" and preserve_input_boundary:
+        input_validation = validate_mesh(
+            mesh,
+            require_volume=True,
+            check_self_intersections=True,
+        )
+        if bool(input_validation["success"]):
+            output = ObjMesh(
+                mesh.V.copy(),
+                mesh.F.copy(),
+                mesh.face_object.copy(),
+                mesh.face_group.copy(),
+                mesh.face_material.copy(),
+            )
+            output = _finish_output(
+                output,
+                report,
+                require_volume=True,
+                uniform_refine_levels=uniform_refine_levels,
+            )
+            report.warnings.append(
+                "输入已经是合法闭合实体，已跳过修复和布尔重建，"
+                "以锁定原始边界。"
+            )
+            report.status = "success"
+            return output, report
+
     parts, report.part_reports = _repair_parts(
         mesh,
         eps_v_abs=eps_v_abs,
@@ -310,7 +343,9 @@ def repair_mesh_data(
             require_volume=False,
             uniform_refine_levels=uniform_refine_levels,
         )
-        report.warnings.append("surface 模式允许边界，不判断开放曲面的实体内外。")
+        report.warnings.append(
+            "surface 模式允许边界，不判断开放曲面的实体内外。"
+        )
         report.warnings.append("surface 模式不执行开放曲面的精确自交切分。")
         report.status = "success"
         return output, report
@@ -320,12 +355,15 @@ def repair_mesh_data(
     except (RuntimeError, ValueError) as exc:
         if not approximate_rebuild:
             raise RuntimeError(
-                f"精确实体合并失败：{exc}。如允许改变几何，可开启 approximate_rebuild。"
+                f"精确实体合并失败：{exc}。如允许改变几何，"
+                "可开启 approximate_rebuild。"
             ) from exc
 
         output = _rebuild_watertight(combine_parts(parts), rebuild_resolution)
         report.approximate_rebuild = True
-        report.warnings.append("已使用近似重建，输出顶点不再与输入一一对应。")
+        report.warnings.append(
+            "已使用近似重建，输出顶点不再与输入一一对应。"
+        )
 
     output = _finish_output(
         output,

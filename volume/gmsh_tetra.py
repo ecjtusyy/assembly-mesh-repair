@@ -200,6 +200,7 @@ def tetrahedralize(
     report.update(
         {
             "generator": "Gmsh",
+            "boundary_mode": "relaxed",
             "single_region": True,
             "domain_name": domain_name or "domain",
             "boundary_name": "boundary",
