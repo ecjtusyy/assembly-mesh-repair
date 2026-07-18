@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from copy import deepcopy
 from dataclasses import dataclass, field
 from functools import reduce
 
@@ -120,7 +121,11 @@ def _repair_parts(
             fill_holes=fill_holes,
             max_hole_edges=max_hole_edges,
         )
-        validation = validate_mesh(output, require_volume=False)
+        validation = validate_mesh(
+            output,
+            require_volume=False,
+            check_self_intersections=True,
+        )
         require_valid(validation, f"part_{part_id}")
 
         repaired.append(output)
@@ -160,7 +165,11 @@ def _union_parts(parts: list[ObjMesh]) -> ObjMesh:
     solids: list[manifold3d.Manifold] = []
     for part_id, source in enumerate(parts):
         part = _outward_part(source)
-        validation = validate_mesh(part, require_volume=True)
+        validation = validate_mesh(
+            part,
+            require_volume=True,
+            check_self_intersections=True,
+        )
         require_valid(validation, f"solid part_{part_id}")
         mesh64 = manifold3d.Mesh64(
             vert_properties=np.asarray(part.V, dtype=np.float64),
@@ -225,7 +234,11 @@ def _finish_output(
 ) -> ObjMesh:
     """细分前后各验收一次。"""
 
-    before = validate_mesh(output, require_volume=require_volume)
+    before = validate_mesh(
+        output,
+        require_volume=require_volume,
+        check_self_intersections=require_volume,
+    )
     require_valid(before, "pre_refine")
     report.pre_refine_validation = before
 
@@ -241,7 +254,18 @@ def _finish_output(
         output = uniform_refine(output, levels=levels)
 
     report.post_refine_faces = int(len(output.F))
-    report.output_validation = validate_mesh(output, require_volume=require_volume)
+    if not levels:
+        report.output_validation = deepcopy(before)
+    else:
+        report.output_validation = validate_mesh(
+            output,
+            require_volume=require_volume,
+            check_self_intersections=False,
+        )
+        report.output_validation["self_intersections"] = {
+            **before["self_intersections"],
+            "inherited_from_pre_refine": True,
+        }
     require_valid(report.output_validation, "post_refine")
     return output
 

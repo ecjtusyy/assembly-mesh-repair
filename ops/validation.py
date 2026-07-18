@@ -5,10 +5,16 @@ from __future__ import annotations
 import trimesh
 
 from mesh.diagnostics import topology_summary
+from mesh.intersections import self_intersection_report
 from mesh.io_obj import ObjMesh
 
 
-def validate_mesh(mesh: ObjMesh, *, require_volume: bool) -> dict[str, object]:
+def validate_mesh(
+    mesh: ObjMesh,
+    *,
+    require_volume: bool,
+    check_self_intersections: bool = False,
+) -> dict[str, object]:
     """同时检查组合拓扑和实体属性。"""
 
     topology = topology_summary(mesh.V, mesh.F)
@@ -36,6 +42,21 @@ def validate_mesh(mesh: ObjMesh, *, require_volume: bool) -> dict[str, object]:
     if require_volume and not volume:
         errors.append("not_positive_volume")
 
+    intersections: dict[str, object] = {
+        "checked": bool(check_self_intersections),
+        "count": 0,
+        "tested_pairs": 0,
+        "candidate_pairs": 0,
+        "truncated": False,
+        "sample_face_pairs": [],
+    }
+    if check_self_intersections:
+        intersections.update(self_intersection_report(mesh.V, mesh.F))
+        if bool(intersections["truncated"]):
+            errors.append("self_intersection_check_incomplete")
+        if int(intersections["count"]) > 0:
+            errors.append("self_intersections")
+
     return {
         "success": not errors,
         "errors": errors,
@@ -46,6 +67,7 @@ def validate_mesh(mesh: ObjMesh, *, require_volume: bool) -> dict[str, object]:
         "is_winding_consistent": winding,
         "is_volume": volume,
         "volume": signed_volume,
+        "self_intersections": intersections,
     }
 
 

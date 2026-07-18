@@ -18,6 +18,7 @@ tests/out/
 *_repaired_refined.obj
 *.msh
 *.stl
+*.vtk
 
 # Local env
 .venv/

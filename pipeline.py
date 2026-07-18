@@ -8,6 +8,7 @@ from pathlib import Path
 
 from mesh.io_obj import load_obj_data, save_obj_data
 from ops.pipeline_impl import repair_mesh_data
+from volume.gmsh_tetra import TetrahedralizationOptions, tetrahedralize
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -40,12 +41,66 @@ def build_parser() -> argparse.ArgumentParser:
         default=0,
         help="Gmsh 均匀细分级数，每一级把一个三角形拆成四个",
     )
+    parser.add_argument(
+        "--tetrahedralize",
+        action="store_true",
+        help="在 solid 表面验收后生成单区域四面体体网格",
+    )
+    parser.add_argument(
+        "--target_size",
+        type=float,
+        default=0.0,
+        help="目标单元尺寸；0 表示包围盒对角线的 1/8",
+    )
+    parser.add_argument(
+        "--surface_angle",
+        type=float,
+        default=40.0,
+        help="Gmsh 离散表面分类角度（度）",
+    )
+    parser.add_argument(
+        "--min_tet_quality",
+        type=float,
+        default=0.05,
+        help="四面体 mean-ratio 最低验收值，范围 0 到 1",
+    )
+    parser.add_argument(
+        "--max_geometry_deviation_rel",
+        type=float,
+        default=1e-6,
+        help="体网格边界相对包围盒的最大允许偏差",
+    )
+    parser.add_argument(
+        "--max_volume_error_rel",
+        type=float,
+        default=1e-6,
+        help="四面体总体积与修复表面体积的最大相对误差",
+    )
+    parser.add_argument(
+        "--no_tet_optimize",
+        action="store_true",
+        help="关闭 Gmsh Netgen 四面体质量优化",
+    )
     parser.add_argument("--report_json", default=None, help="汇总报告路径")
     return parser
 
 
-def repair_one_obj(input_path: Path, output_dir: Path, args: argparse.Namespace) -> dict[str, object]:
+def repair_one_obj(
+    input_path: Path,
+    output_dir: Path,
+    args: argparse.Namespace,
+) -> dict[str, object]:
     mesh = load_obj_data(input_path)
+    if args.tetrahedralize and args.mode != "solid":
+        raise ValueError("--tetrahedralize 只能与 --mode solid 一起使用")
+
+    materials = sorted({name for name in mesh.face_material if name})
+    if args.tetrahedralize and len(materials) > 1:
+        raise ValueError(
+            "第一阶段只支持单材料区域；检测到多个 usemtl，"
+            "不能悄悄合并材料界面："
+            + ", ".join(materials)
+        )
     output, report = repair_mesh_data(
         mesh,
         mode=args.mode,
@@ -65,6 +120,29 @@ def repair_one_obj(input_path: Path, output_dir: Path, args: argparse.Namespace)
     result = report.as_dict()
     result["input"] = str(input_path)
     result["output"] = str(output_path)
+    result["input_materials"] = materials
+    if args.tetrahedralize:
+        base = output_dir / f"{input_path.stem}_{args.mode}"
+        _, volume_report = tetrahedralize(
+            output,
+            base.with_name(base.name + "_volume.msh"),
+            base.with_name(base.name + "_quality.vtk"),
+            options=TetrahedralizationOptions(
+                target_size=args.target_size,
+                surface_angle=args.surface_angle,
+                min_quality=args.min_tet_quality,
+                max_relative_deviation=args.max_geometry_deviation_rel,
+                max_relative_volume_error=args.max_volume_error_rel,
+                optimize=not args.no_tet_optimize,
+            ),
+            domain_name=materials[0] if len(materials) == 1 else "domain",
+        )
+        result["volume_mesh"] = volume_report
+        if not bool(volume_report["success"]):
+            result["status"] = "failed"
+            result["error"] = "四面体网格验收失败：" + ", ".join(
+                str(value) for value in volume_report["errors"]
+            )
     return result
 
 
@@ -81,7 +159,11 @@ def main() -> int:
         try:
             report = repair_one_obj(input_path, output_dir, args)
             reports.append(report)
-            print(f"[完成] {input_path.name} -> {report['output']}")
+            if report.get("status") == "failed":
+                failed = True
+                print(f"[失败] {input_path.name}: {report['error']}")
+            else:
+                print(f"[完成] {input_path.name} -> {report['output']}")
         except Exception as exc:
             failed = True
             reports.append(
