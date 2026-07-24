@@ -2,10 +2,14 @@
 
 from pathlib import Path
 
+import numpy as np
 import pytest
 
 from mesh.io_obj import load_obj_data
-from ops.pipeline_impl import repair_mesh_data
+from ops.pipeline_impl import (
+    _canonicalize_pre_union_coordinates,
+    repair_mesh_data,
+)
 
 
 DATA = Path(__file__).resolve().parents[1] / "data"
@@ -52,3 +56,46 @@ def test_approximate_rebuild_is_explicit_fallback():
     assert report.approximate_rebuild is True
     assert report.output_validation["is_volume"] is True
     assert len(output.F) > len(mesh.F)
+
+
+def test_pre_union_coordinate_canonicalization_preserves_bbox():
+    mesh = load_obj_data(DATA / "基坑1.0（存在多部分贴合和局部重叠）.obj")
+
+    output, report = _canonicalize_pre_union_coordinates(mesh, 3e-8)
+
+    assert report["enabled"] is True
+    assert report["bounding_box_preserved"] is True
+    assert report["moved_vertices"] > 0
+    assert report["maximum_relative_displacement"] <= 3e-8
+    assert np.array_equal(output.V.min(axis=0), mesh.V.min(axis=0))
+    assert np.array_equal(output.V.max(axis=0), mesh.V.max(axis=0))
+
+
+def test_pit_pre_union_canonicalization_removes_numeric_seams():
+    source = load_obj_data(DATA / "基坑1.0（存在多部分贴合和局部重叠）.obj")
+
+    output, report = repair_mesh_data(
+        source,
+        mode="solid",
+        pre_union_snap_relative=3e-8,
+    )
+
+    near_x = np.unique(output.V[:, 0])
+    near_x = near_x[(near_x > 1.49998) & (near_x < 1.50002)]
+    canonicalization = report.coordinate_canonicalization
+
+    assert report.output_validation["success"] is True
+    assert canonicalization["enabled"] is True
+    assert canonicalization["bounding_box_preserved"] is True
+    assert near_x.tolist() == [1.5]
+
+
+def test_pre_union_coordinate_tolerance_cannot_be_negative():
+    source = load_obj_data(DATA / "基坑1.0（存在多部分贴合和局部重叠）.obj")
+
+    with pytest.raises(ValueError, match="pre_union_snap_rel"):
+        repair_mesh_data(
+            source,
+            mode="solid",
+            pre_union_snap_relative=-1e-8,
+        )

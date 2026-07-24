@@ -45,6 +45,7 @@ def validate_mesh(
     intersections: dict[str, object] = {
         "checked": bool(check_self_intersections),
         "count": 0,
+        "adjacent_count": 0,
         "tested_pairs": 0,
         "candidate_pairs": 0,
         "truncated": False,
@@ -54,6 +55,8 @@ def validate_mesh(
         intersections.update(self_intersection_report(mesh.V, mesh.F))
         if bool(intersections["truncated"]):
             errors.append("self_intersection_check_incomplete")
+        if int(intersections.get("adjacent_count", 0)) > 0:
+            errors.append("adjacent_face_overlaps")
         if int(intersections["count"]) > 0:
             errors.append("self_intersections")
 

@@ -35,6 +35,7 @@ class RepairRunReport:
     approximate_rebuild: bool = False
     quality_surface_remesh: bool = False
     surface_remesh_report: dict[str, object] = field(default_factory=dict)
+    coordinate_canonicalization: dict[str, object] = field(default_factory=dict)
     uniform_refine_levels: int = 0
     pre_surface_faces: int | None = None
     post_surface_faces: int | None = None
@@ -54,6 +55,7 @@ class RepairRunReport:
             "approximate_rebuild": self.approximate_rebuild,
             "quality_surface_remesh": self.quality_surface_remesh,
             "surface_remesh_report": self.surface_remesh_report,
+            "coordinate_canonicalization": self.coordinate_canonicalization,
             "uniform_refine_levels": self.uniform_refine_levels,
             "pre_surface_faces": self.pre_surface_faces,
             "post_surface_faces": self.post_surface_faces,
@@ -80,6 +82,88 @@ def normalize_eps(eps: float, V: np.ndarray, mode: str = "relative_bbox") -> flo
     if mode == "relative_bbox":
         return eps * bbox_diag(V)
     raise ValueError("eps_mode 只能是 absolute 或 relative_bbox")
+
+
+def _canonicalize_pre_union_coordinates(
+    mesh: ObjMesh,
+    relative_tolerance: float,
+) -> tuple[ObjMesh, dict[str, object]]:
+    """在零件布尔并集前统一近重合坐标面，并保持装配体包围盒。"""
+
+    relative = float(relative_tolerance)
+    if relative < 0.0:
+        raise ValueError("pre_union_snap_rel 不能为负数")
+
+    diagonal = bbox_diag(mesh.V)
+    absolute = diagonal * relative
+    source = mesh.V
+    vertices = source.copy()
+    clusters: list[dict[str, object]] = []
+    if absolute > 0.0:
+        source_minimum = source.min(axis=0)
+        source_maximum = source.max(axis=0)
+        for axis in range(3):
+            values, counts = np.unique(
+                source[:, axis],
+                return_counts=True,
+            )
+            start = 0
+            while start < len(values):
+                stop = start + 1
+                while (
+                    stop < len(values)
+                    and float(values[stop] - values[start]) <= absolute
+                ):
+                    stop += 1
+                cluster_values = values[start:stop]
+                cluster_counts = counts[start:stop]
+                if len(cluster_values) > 1:
+                    if cluster_values[0] == source_minimum[axis]:
+                        representative = float(cluster_values[0])
+                    elif cluster_values[-1] == source_maximum[axis]:
+                        representative = float(cluster_values[-1])
+                    else:
+                        representative = float(
+                            cluster_values[int(np.argmax(cluster_counts))]
+                        )
+                    affected = np.isin(vertices[:, axis], cluster_values)
+                    vertices[affected, axis] = representative
+                    clusters.append(
+                        {
+                            "axis": "xyz"[axis],
+                            "minimum": float(cluster_values[0]),
+                            "maximum": float(cluster_values[-1]),
+                            "representative": representative,
+                            "distinct_coordinates": int(len(cluster_values)),
+                            "affected_vertices": int(np.count_nonzero(affected)),
+                        }
+                    )
+                start = stop
+
+    displacement = np.linalg.norm(vertices - source, axis=1)
+    maximum = float(displacement.max(initial=0.0))
+    output = ObjMesh(
+        vertices,
+        mesh.F.copy(),
+        mesh.face_object.copy(),
+        mesh.face_group.copy(),
+        mesh.face_material.copy(),
+    )
+    return output, {
+        "enabled": bool(relative > 0.0),
+        "relative_tolerance": relative,
+        "absolute_tolerance": float(absolute),
+        "clusters": clusters,
+        "moved_vertices": int(np.count_nonzero(displacement > 0.0)),
+        "maximum_displacement": maximum,
+        "maximum_relative_displacement": (
+            maximum / diagonal if diagonal > 0.0 else 0.0
+        ),
+        "bounding_box_preserved": bool(
+            np.array_equal(source.min(axis=0), vertices.min(axis=0))
+            and np.array_equal(source.max(axis=0), vertices.max(axis=0))
+        ),
+    }
 
 
 def python_cleanup_only(
@@ -180,8 +264,18 @@ def _union_parts(parts: list[ObjMesh]) -> ObjMesh:
         )
         require_valid(validation, f"solid part_{part_id}")
         mesh64 = manifold3d.Mesh64(
-            vert_properties=np.asarray(part.V, dtype=np.float64),
-            tri_verts=np.asarray(part.F, dtype=np.uint32),
+            vert_properties=np.array(
+                part.V,
+                dtype=np.float64,
+                copy=True,
+                order="C",
+            ),
+            tri_verts=np.array(
+                part.F,
+                dtype=np.uint64,
+                copy=True,
+                order="C",
+            ),
         )
         solid = manifold3d.Manifold(mesh=mesh64)
         if solid.is_empty():
@@ -335,11 +429,14 @@ def repair_mesh_data(
     max_surface_geometry_error_relative: float = 1e-10,
     max_surface_faces: int = 1_000_000,
     surface_smoothing_steps: int = 5,
+    pre_union_snap_relative: float = 0.0,
 ) -> tuple[ObjMesh, RepairRunReport]:
     """按用户意图修复网格。"""
 
     if mode not in {"assembly", "surface", "solid"}:
         raise ValueError("mode 只能是 assembly、surface 或 solid")
+    if pre_union_snap_relative < 0.0:
+        raise ValueError("pre_union_snap_rel 不能为负数")
 
     eps_v_abs = normalize_eps(eps_v, mesh.V, eps_mode)
     report = RepairRunReport(
@@ -347,6 +444,10 @@ def repair_mesh_data(
         eps_v_abs=eps_v_abs,
         input_topology=topology_summary(mesh.V, mesh.F),
     )
+    report.coordinate_canonicalization = {
+        "enabled": False,
+        "relative_tolerance": float(pre_union_snap_relative),
+    }
 
     preserve_input_boundary = (
         eps_v_abs == 0.0
@@ -397,8 +498,17 @@ def repair_mesh_data(
             report.status = "success"
             return output, report
 
+    repair_input = mesh
+    if mode == "solid" and pre_union_snap_relative > 0.0:
+        repair_input, report.coordinate_canonicalization = (
+            _canonicalize_pre_union_coordinates(
+                mesh,
+                pre_union_snap_relative,
+            )
+        )
+
     parts, report.part_reports = _repair_parts(
-        mesh,
+        repair_input,
         eps_v_abs=eps_v_abs,
         fill_holes=fill_holes,
         max_hole_edges=max_hole_edges,
@@ -482,6 +592,7 @@ def repair_single_mesh(
     max_surface_geometry_error_relative: float = 1e-10,
     max_surface_faces: int = 1_000_000,
     surface_smoothing_steps: int = 5,
+    pre_union_snap_relative: float = 0.0,
     **_legacy: object,
 ) -> tuple[MeshDict, RepairRunReport]:
     """兼容原 V/F 调用接口。"""
@@ -507,5 +618,6 @@ def repair_single_mesh(
         max_surface_geometry_error_relative=max_surface_geometry_error_relative,
         max_surface_faces=max_surface_faces,
         surface_smoothing_steps=surface_smoothing_steps,
+        pre_union_snap_relative=pre_union_snap_relative,
     )
     return {"V": output.V, "F": output.F}, report

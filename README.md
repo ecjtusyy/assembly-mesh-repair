@@ -151,6 +151,30 @@ python pipeline.py \
 
 宽松模式会进行近点处理和 Gmsh 离散曲面重建，所以不能宣称外边界完全不变。严格和宽松结果都要经过翻转、退化、重复单元、体边界、体积和质量验收。
 
+若多零件装配体使用了约 \(10^{-6}\) 的建模偏移来制造相交，布尔并集后可能
+残留极薄的数值伪特征。只有确认这些偏移不是实际结构尺寸时，才可在并集前
+显式统一近重合坐标面。基坑回归模型的已验证命令为：
+
+```bash
+python pipeline.py \
+  --input "tests/data/基坑1.0（存在多部分贴合和局部重叠）.obj" \
+  --output_dir out \
+  --mode solid \
+  --pre_union_snap_rel 3e-8 \
+  --tetrahedralize \
+  --tetra_mode relaxed \
+  --target_size 2 \
+  --min_tet_quality 0.05 \
+  --max_geometry_deviation_rel 1e-6 \
+  --max_volume_error_rel 1e-6 \
+  --report_json out/report.json
+```
+
+`--pre_union_snap_rel` 默认关闭。它只在各零件仍然独立时规范化坐标，保留
+整个装配体包围盒，然后重新检查每个零件并执行实体并集。报告会记录坐标簇、
+移动顶点数和最大位移。容差可能删除小于阈值的真实薄结构，因此不能根据
+“网格更好看”自动开启。
+
 修复开放表面并填补三角形、四边形小孔：
 
 ```bash

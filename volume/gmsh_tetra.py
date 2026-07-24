@@ -79,15 +79,22 @@ def _extract_mesh(gmsh: object, volume_tag: int) -> TetraMesh:
 
 
 def _prepare_surface(source: ObjMesh) -> tuple[ObjMesh, dict[str, object]]:
-    """清除布尔输出中的近重复点和极薄三角片。"""
+    """尝试近点拓扑清理；相邻面覆盖等任何错误都会触发回退。"""
 
+    source_validation = validate_mesh(
+        source,
+        require_volume=True,
+        check_self_intersections=True,
+    )
+    require_valid(source_validation, "tetra_source_surface")
     diagonal = float(np.linalg.norm(source.V.max(axis=0) - source.V.min(axis=0)))
     attempts: list[dict[str, object]] = []
     for relative_tolerance in (1e-7, 5e-8, 1e-8, 5e-9, 0.0):
+        tolerance = diagonal * relative_tolerance
         working = Mesh(source.V.copy(), source.F.copy())
         changes = cleanup_topology(
             working,
-            eps_v=diagonal * relative_tolerance,
+            eps_v=tolerance,
             area_eps=area_threshold_from_mesh(working),
         )
         prepared = ObjMesh(working.V, working.F)
@@ -98,15 +105,23 @@ def _prepare_surface(source: ObjMesh) -> tuple[ObjMesh, dict[str, object]]:
         )
         attempts.append(
             {
-                "relative_weld_tolerance": relative_tolerance,
+                "relative_tolerance": relative_tolerance,
+                "absolute_tolerance": tolerance,
                 "success": bool(validation["success"]),
                 "errors": list(validation["errors"]),
+                "vertices": int(len(prepared.V)),
+                "faces": int(len(prepared.F)),
             }
         )
         if bool(validation["success"]):
             return prepared, {
-                "relative_weld_tolerance": relative_tolerance,
+                "method": "validated_topology_cleanup",
+                "relative_tolerance": relative_tolerance,
+                "absolute_tolerance": tolerance,
+                "vertices_removed": int(len(source.V) - len(prepared.V)),
+                "faces_removed": int(len(source.F) - len(prepared.F)),
                 "changes": changes.as_dict(),
+                "source_validation": source_validation,
                 "validation": validation,
                 "attempts": attempts,
             }
@@ -181,7 +196,8 @@ def tetrahedralize(
         gmsh.model.setPhysicalName(3, domain_group, domain_name or "domain")
         gmsh.model.mesh.generate(3)
         if settings.optimize:
-            gmsh.model.mesh.optimize("Netgen")
+            gmsh.model.mesh.optimize("Relocate3D", True, 5)
+            gmsh.model.mesh.optimize("Netgen", True, 10)
         gmsh.option.setNumber("Mesh.MshFileVersion", 4.1)
         gmsh.write(str(msh_output))
         mesh = _extract_mesh(gmsh, volume_tag)

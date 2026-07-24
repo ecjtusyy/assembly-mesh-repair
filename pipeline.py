@@ -61,6 +61,15 @@ def build_parser() -> argparse.ArgumentParser:
         help="锁定平面和直线特征边，重新生成高质量表面三角形",
     )
     parser.add_argument(
+        "--pre_union_snap_rel",
+        type=float,
+        default=0.0,
+        help=(
+            "solid 布尔并集前统一近重合坐标面的相对容差；"
+            "0 表示禁用，必须显式允许几何容差"
+        ),
+    )
+    parser.add_argument(
         "--surface_target_size",
         type=float,
         default=0.0,
@@ -184,9 +193,14 @@ def repair_one_obj(
 
     strict_validation: dict[str, object] | None = None
     if args.tetrahedralize and args.tetra_mode == "strict":
-        if args.eps_v != 0.0 or args.fill_holes or args.approximate_rebuild:
+        if (
+            args.eps_v != 0.0
+            or args.fill_holes
+            or args.approximate_rebuild
+            or args.pre_union_snap_rel != 0.0
+        ):
             raise ValueError(
-                "strict 模式禁止焊点、补洞和近似重建；"
+                "strict 模式禁止焊点、补洞、并集前坐标规范化和近似重建；"
                 "请先提供合法闭合边界"
             )
         if args.uniform_refine_levels:
@@ -227,6 +241,7 @@ def repair_one_obj(
         ),
         max_surface_faces=args.max_surface_faces,
         surface_smoothing_steps=args.surface_smoothing_steps,
+        pre_union_snap_relative=args.pre_union_snap_rel,
     )
 
     suffix_parts: list[str] = []
