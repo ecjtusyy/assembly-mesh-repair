@@ -30,7 +30,7 @@ python -m pip install -r requirements-approx.txt
 python -m pip install -r requirements-tetgen.txt
 ```
 
-需要 Gmsh 均匀细分或宽松四面体生成时再安装：
+需要表面质量重剖分、均匀细分或宽松四面体生成时再安装：
 
 ```bash
 python -m pip install -r requirements-gmsh.txt
@@ -77,6 +77,34 @@ python pipeline.py \
 
 一级细分把每个三角形拆成 4 个，二级细分拆成 16 个。程序在细分前后都会重新验收，确保细分没有引入非流形边、非流形点、孔洞和体积错误。
 
+### 保持几何的表面质量重剖分
+
+均匀细分只会复制原三角形的角度，不能改善狭长三角形。对分片平面的机械模型应使用：
+
+```bash
+python pipeline.py \
+  --input model.obj \
+  --output_dir out \
+  --mode solid \
+  --quality_surface_remesh \
+  --min_surface_angle 15 \
+  --min_surface_mean_ratio 0.2 \
+  --max_surface_condition 10 \
+  --report_json out/report.json
+```
+
+该流程先把同标签、同平面的三角形合并成平面片，删除片内原有对角线，再由 Gmsh Frontal-Delaunay 在平面内部布点。以下内容是硬约束：
+
+- 原直线特征边上的节点只能沿原线段增加；
+- 新节点不能离开所属原平面；
+- 每个平面片面积和闭合表面体积不能超过给定误差；
+- 输出仍须通过闭合、绕序、非流形和自相交验收；
+- 最小角、`mean-ratio` 或形状条件数任一不合格即失败。
+
+`surface_target_size=0` 会根据平面片面积和周长估计尺寸，并限制片区之间的尺寸跳变。JSON 同时记录重剖分前后质量分位数、坏面数量和几何误差。
+
+这个选项会改变三角形连接关系，但不改变分片平面的几何外形。若原几何本身含有尖角或极短特征边，严格保留几何与“所有三角形均满足最小角”可能互相冲突；程序会报告 `surface_quality_below_threshold`，不会删除特征或移动外轮廓来伪造成功。
+
 从已经合法的闭合表面生成边界锁定四面体体网格：
 
 ```bash
@@ -90,10 +118,10 @@ python pipeline.py \
   --report_json out/report.json
 ```
 
-`strict` 是默认模式。它禁止焊点、补洞、表面重分和近似重建，并使用 TetGen 的边界保护选项。输出边界必须满足：
+`strict` 是默认模式。它禁止焊点、补洞、均匀细分和近似重建，并使用 TetGen 的边界保护选项。若先显式开启 `--quality_surface_remesh`，TetGen 会逐点逐面锁定已经通过几何与质量验收的新表面。以下比较针对“进入 TetGen 的表面”；未开启质量重剖分时它就是原始 OBJ：
 
-- 原始顶点坐标逐字节相等；
-- 原始三角面的三个顶点编号相同，允许输出调整面顺序和朝向；
+- 输入 TetGen 的顶点坐标逐字节相等；
+- 输入 TetGen 的三角面顶点编号相同，允许输出调整面顺序和朝向；
 - 边界上没有新增 Steiner 点；
 - OBJ 的 `g` 边界分组写入 `.msh` 物理组；没有有效 `g` 时使用 `o`；
 - JSON 中输入、输出边界的 SHA-256 必须一致。
@@ -193,6 +221,7 @@ OBJ 的闭合三角表面可以交给 TetGen 或 Gmsh 生成四面体，但“�
 - 三角形、四边形小孔；
 - 多个闭合零件的接触、穿透和体积重叠；
 - 严重三角汤的近似闭合重建。
+- 共面片内部狭长三角形的保持几何重剖分。
 
 下面几类输入没有唯一精确答案：
 

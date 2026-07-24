@@ -56,6 +56,53 @@ def build_parser() -> argparse.ArgumentParser:
         help="Gmsh 均匀细分级数，每一级把一个三角形拆成四个",
     )
     parser.add_argument(
+        "--quality_surface_remesh",
+        action="store_true",
+        help="锁定平面和直线特征边，重新生成高质量表面三角形",
+    )
+    parser.add_argument(
+        "--surface_target_size",
+        type=float,
+        default=0.0,
+        help="表面重剖分目标尺寸；0 表示根据平面片自动估计",
+    )
+    parser.add_argument(
+        "--min_surface_angle",
+        type=float,
+        default=15.0,
+        help="表面三角形最小角验收值（度）",
+    )
+    parser.add_argument(
+        "--min_surface_mean_ratio",
+        type=float,
+        default=0.2,
+        help="表面三角形 mean-ratio 最低验收值",
+    )
+    parser.add_argument(
+        "--max_surface_condition",
+        type=float,
+        default=10.0,
+        help="表面三角形等边参考形状条件数上限",
+    )
+    parser.add_argument(
+        "--max_surface_geometry_error_rel",
+        type=float,
+        default=1e-10,
+        help="重剖分后特征边、平面、面积和体积的相对误差上限",
+    )
+    parser.add_argument(
+        "--max_surface_faces",
+        type=int,
+        default=1_000_000,
+        help="表面重剖分允许生成的最大三角形数",
+    )
+    parser.add_argument(
+        "--surface_smoothing_steps",
+        type=int,
+        default=5,
+        help="Gmsh 表面节点平滑次数",
+    )
+    parser.add_argument(
         "--tetrahedralize",
         action="store_true",
         help="在 solid 表面验收后生成单区域四面体体网格",
@@ -64,7 +111,7 @@ def build_parser() -> argparse.ArgumentParser:
         "--tetra_mode",
         choices=("strict", "relaxed"),
         default="strict",
-        help="strict 完全锁定输入边界；relaxed 允许容差内表面修复",
+        help="strict 锁定进入 TetGen 的表面；relaxed 允许容差内表面修复",
     )
     parser.add_argument(
         "--target_size",
@@ -170,9 +217,24 @@ def repair_one_obj(
         approximate_rebuild=args.approximate_rebuild,
         rebuild_resolution=args.rebuild_resolution,
         uniform_refine_levels=args.uniform_refine_levels,
+        quality_surface_remesh=args.quality_surface_remesh,
+        surface_target_size=args.surface_target_size,
+        min_surface_angle=args.min_surface_angle,
+        min_surface_mean_ratio=args.min_surface_mean_ratio,
+        max_surface_condition=args.max_surface_condition,
+        max_surface_geometry_error_relative=(
+            args.max_surface_geometry_error_rel
+        ),
+        max_surface_faces=args.max_surface_faces,
+        surface_smoothing_steps=args.surface_smoothing_steps,
     )
 
-    suffix = f"_gmsh_l{args.uniform_refine_levels}" if args.uniform_refine_levels else ""
+    suffix_parts: list[str] = []
+    if args.quality_surface_remesh:
+        suffix_parts.append("quality")
+    if args.uniform_refine_levels:
+        suffix_parts.append(f"gmsh_l{args.uniform_refine_levels}")
+    suffix = "_" + "_".join(suffix_parts) if suffix_parts else ""
     output_path = output_dir / f"{input_path.stem}_{args.mode}_repaired{suffix}.obj"
     save_obj_data(output_path, output)
 

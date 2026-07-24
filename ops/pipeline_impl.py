@@ -33,7 +33,11 @@ class RepairRunReport:
     pre_refine_validation: dict[str, object] = field(default_factory=dict)
     output_validation: dict[str, object] = field(default_factory=dict)
     approximate_rebuild: bool = False
+    quality_surface_remesh: bool = False
+    surface_remesh_report: dict[str, object] = field(default_factory=dict)
     uniform_refine_levels: int = 0
+    pre_surface_faces: int | None = None
+    post_surface_faces: int | None = None
     pre_refine_faces: int | None = None
     post_refine_faces: int | None = None
     warnings: list[str] = field(default_factory=list)
@@ -48,7 +52,11 @@ class RepairRunReport:
             "pre_refine_validation": self.pre_refine_validation,
             "output_validation": self.output_validation,
             "approximate_rebuild": self.approximate_rebuild,
+            "quality_surface_remesh": self.quality_surface_remesh,
+            "surface_remesh_report": self.surface_remesh_report,
             "uniform_refine_levels": self.uniform_refine_levels,
+            "pre_surface_faces": self.pre_surface_faces,
+            "post_surface_faces": self.post_surface_faces,
             "pre_refine_faces": self.pre_refine_faces,
             "post_refine_faces": self.post_refine_faces,
             "warnings": self.warnings,
@@ -231,15 +239,53 @@ def _finish_output(
     *,
     require_volume: bool,
     uniform_refine_levels: int,
+    quality_surface_remesh: bool,
+    surface_target_size: float,
+    min_surface_angle: float,
+    min_surface_mean_ratio: float,
+    max_surface_condition: float,
+    max_surface_geometry_error_relative: float,
+    max_surface_faces: int,
+    surface_smoothing_steps: int,
 ) -> ObjMesh:
-    """细分前后各验收一次。"""
+    """质量重剖分和均匀细分前后分别验收。"""
 
-    before = validate_mesh(
+    initial = validate_mesh(
         output,
         require_volume=require_volume,
         check_self_intersections=require_volume,
     )
-    require_valid(before, "pre_refine")
+    require_valid(initial, "pre_surface_remesh")
+    report.pre_surface_faces = int(len(output.F))
+    report.quality_surface_remesh = bool(quality_surface_remesh)
+
+    if quality_surface_remesh:
+        from ops.gmsh_quality_remesh import (
+            SurfaceRemeshOptions,
+            remesh_planar_surface,
+        )
+
+        output, report.surface_remesh_report = remesh_planar_surface(
+            output,
+            options=SurfaceRemeshOptions(
+                target_size=surface_target_size,
+                min_angle=min_surface_angle,
+                min_mean_ratio=min_surface_mean_ratio,
+                max_condition=max_surface_condition,
+                max_geometry_error_relative=max_surface_geometry_error_relative,
+                max_faces=max_surface_faces,
+                smoothing_steps=surface_smoothing_steps,
+            ),
+        )
+        before = validate_mesh(
+            output,
+            require_volume=require_volume,
+            check_self_intersections=require_volume,
+        )
+        require_valid(before, "post_surface_remesh")
+    else:
+        before = initial
+    report.post_surface_faces = int(len(output.F))
     report.pre_refine_validation = before
 
     levels = int(uniform_refine_levels)
@@ -281,6 +327,14 @@ def repair_mesh_data(
     approximate_rebuild: bool = False,
     rebuild_resolution: int = 50000,
     uniform_refine_levels: int = 0,
+    quality_surface_remesh: bool = False,
+    surface_target_size: float = 0.0,
+    min_surface_angle: float = 15.0,
+    min_surface_mean_ratio: float = 0.2,
+    max_surface_condition: float = 10.0,
+    max_surface_geometry_error_relative: float = 1e-10,
+    max_surface_faces: int = 1_000_000,
+    surface_smoothing_steps: int = 5,
 ) -> tuple[ObjMesh, RepairRunReport]:
     """按用户意图修复网格。"""
 
@@ -319,11 +373,27 @@ def repair_mesh_data(
                 report,
                 require_volume=True,
                 uniform_refine_levels=uniform_refine_levels,
+                quality_surface_remesh=quality_surface_remesh,
+                surface_target_size=surface_target_size,
+                min_surface_angle=min_surface_angle,
+                min_surface_mean_ratio=min_surface_mean_ratio,
+                max_surface_condition=max_surface_condition,
+                max_surface_geometry_error_relative=(
+                    max_surface_geometry_error_relative
+                ),
+                max_surface_faces=max_surface_faces,
+                surface_smoothing_steps=surface_smoothing_steps,
             )
-            report.warnings.append(
-                "输入已经是合法闭合实体，已跳过修复和布尔重建，"
-                "以锁定原始边界。"
-            )
+            if quality_surface_remesh:
+                report.warnings.append(
+                    "输入已经是合法闭合实体，已跳过布尔重建；"
+                    "表面三角形已在原平面和特征边约束内重剖分。"
+                )
+            else:
+                report.warnings.append(
+                    "输入已经是合法闭合实体，已跳过修复和布尔重建，"
+                    "以锁定原始边界。"
+                )
             report.status = "success"
             return output, report
 
@@ -342,6 +412,16 @@ def repair_mesh_data(
             report,
             require_volume=False,
             uniform_refine_levels=uniform_refine_levels,
+            quality_surface_remesh=quality_surface_remesh,
+            surface_target_size=surface_target_size,
+            min_surface_angle=min_surface_angle,
+            min_surface_mean_ratio=min_surface_mean_ratio,
+            max_surface_condition=max_surface_condition,
+            max_surface_geometry_error_relative=(
+                max_surface_geometry_error_relative
+            ),
+            max_surface_faces=max_surface_faces,
+            surface_smoothing_steps=surface_smoothing_steps,
         )
         report.warnings.append(
             "surface 模式允许边界，不判断开放曲面的实体内外。"
@@ -370,6 +450,14 @@ def repair_mesh_data(
         report,
         require_volume=True,
         uniform_refine_levels=uniform_refine_levels,
+        quality_surface_remesh=quality_surface_remesh,
+        surface_target_size=surface_target_size,
+        min_surface_angle=min_surface_angle,
+        min_surface_mean_ratio=min_surface_mean_ratio,
+        max_surface_condition=max_surface_condition,
+        max_surface_geometry_error_relative=max_surface_geometry_error_relative,
+        max_surface_faces=max_surface_faces,
+        surface_smoothing_steps=surface_smoothing_steps,
     )
     report.status = "success"
     return output, report
@@ -386,6 +474,14 @@ def repair_single_mesh(
     approximate_rebuild: bool = False,
     rebuild_resolution: int = 50000,
     uniform_refine_levels: int = 0,
+    quality_surface_remesh: bool = False,
+    surface_target_size: float = 0.0,
+    min_surface_angle: float = 15.0,
+    min_surface_mean_ratio: float = 0.2,
+    max_surface_condition: float = 10.0,
+    max_surface_geometry_error_relative: float = 1e-10,
+    max_surface_faces: int = 1_000_000,
+    surface_smoothing_steps: int = 5,
     **_legacy: object,
 ) -> tuple[MeshDict, RepairRunReport]:
     """兼容原 V/F 调用接口。"""
@@ -403,5 +499,13 @@ def repair_single_mesh(
         approximate_rebuild=approximate_rebuild,
         rebuild_resolution=rebuild_resolution,
         uniform_refine_levels=uniform_refine_levels,
+        quality_surface_remesh=quality_surface_remesh,
+        surface_target_size=surface_target_size,
+        min_surface_angle=min_surface_angle,
+        min_surface_mean_ratio=min_surface_mean_ratio,
+        max_surface_condition=max_surface_condition,
+        max_surface_geometry_error_relative=max_surface_geometry_error_relative,
+        max_surface_faces=max_surface_faces,
+        surface_smoothing_steps=surface_smoothing_steps,
     )
     return {"V": output.V, "F": output.F}, report
