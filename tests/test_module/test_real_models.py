@@ -45,6 +45,11 @@ def test_real_model_assembly_keeps_parts(filename):
 
 
 def test_approximate_rebuild_is_explicit_fallback():
+    try:
+        import point_cloud_utils  # noqa: F401
+    except ImportError as exc:
+        pytest.skip(f"point-cloud-utils 当前环境不可用：{exc}")
+
     mesh = load_obj_data(DATA / "tri_cross.obj")
     output, report = repair_mesh_data(
         mesh,

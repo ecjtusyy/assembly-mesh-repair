@@ -38,6 +38,16 @@ def test_surface_repair_is_idempotent():
     assert len(first.F) == len(second.F)
 
 
+def test_only_surface_mode_reports_open_surface_limitations():
+    mesh = _three_faces_on_one_edge()
+
+    _, surface_report = repair_mesh_data(mesh, mode="surface")
+    _, assembly_report = repair_mesh_data(mesh, mode="assembly")
+
+    assert any("surface 模式允许边界" in item for item in surface_report.warnings)
+    assert all("surface 模式" not in item for item in assembly_report.warnings)
+
+
 def test_small_hole_is_filled():
     V = np.array(
         [

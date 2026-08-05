@@ -66,6 +66,21 @@ class RepairRunReport:
         }
 
 
+@dataclass(frozen=True)
+class _FinishOptions:
+    """输出网格的重剖分与细分参数。"""
+
+    uniform_refine_levels: int
+    quality_surface_remesh: bool
+    surface_target_size: float
+    min_surface_angle: float
+    min_surface_mean_ratio: float
+    max_surface_condition: float
+    max_surface_geometry_error_relative: float
+    max_surface_faces: int
+    surface_smoothing_steps: int
+
+
 def bbox_diag(V: np.ndarray) -> float:
     points = np.asarray(V, dtype=np.float64)
     if points.size == 0:
@@ -302,13 +317,28 @@ def _union_parts(parts: list[ObjMesh]) -> ObjMesh:
     )
 
 
-def _rebuild_watertight(mesh: ObjMesh, resolution: int) -> ObjMesh:
+def _load_point_cloud_utils():
+    """加载近似重建依赖，并保留真实故障原因。"""
+
     try:
         import point_cloud_utils as pcu
+    except ModuleNotFoundError as exc:
+        if exc.name == "point_cloud_utils":
+            raise RuntimeError(
+                "近似重建需要安装 point-cloud-utils"
+            ) from exc
+        raise RuntimeError(
+            f"point-cloud-utils 已安装，但依赖 {exc.name!r} 无法加载"
+        ) from exc
     except ImportError as exc:
         raise RuntimeError(
-            "近似重建需要安装 point-cloud-utils"
+            f"point-cloud-utils 已安装，但本机二进制依赖无法加载：{exc}"
         ) from exc
+    return pcu
+
+
+def _rebuild_watertight(mesh: ObjMesh, resolution: int) -> ObjMesh:
+    pcu = _load_point_cloud_utils()
 
     if resolution < 1000:
         raise ValueError("rebuild_resolution 不能小于 1000")
@@ -332,15 +362,7 @@ def _finish_output(
     report: RepairRunReport,
     *,
     require_volume: bool,
-    uniform_refine_levels: int,
-    quality_surface_remesh: bool,
-    surface_target_size: float,
-    min_surface_angle: float,
-    min_surface_mean_ratio: float,
-    max_surface_condition: float,
-    max_surface_geometry_error_relative: float,
-    max_surface_faces: int,
-    surface_smoothing_steps: int,
+    options: _FinishOptions,
 ) -> ObjMesh:
     """质量重剖分和均匀细分前后分别验收。"""
 
@@ -351,9 +373,9 @@ def _finish_output(
     )
     require_valid(initial, "pre_surface_remesh")
     report.pre_surface_faces = int(len(output.F))
-    report.quality_surface_remesh = bool(quality_surface_remesh)
+    report.quality_surface_remesh = bool(options.quality_surface_remesh)
 
-    if quality_surface_remesh:
+    if options.quality_surface_remesh:
         from ops.gmsh_quality_remesh import (
             SurfaceRemeshOptions,
             remesh_planar_surface,
@@ -362,13 +384,15 @@ def _finish_output(
         output, report.surface_remesh_report = remesh_planar_surface(
             output,
             options=SurfaceRemeshOptions(
-                target_size=surface_target_size,
-                min_angle=min_surface_angle,
-                min_mean_ratio=min_surface_mean_ratio,
-                max_condition=max_surface_condition,
-                max_geometry_error_relative=max_surface_geometry_error_relative,
-                max_faces=max_surface_faces,
-                smoothing_steps=surface_smoothing_steps,
+                target_size=options.surface_target_size,
+                min_angle=options.min_surface_angle,
+                min_mean_ratio=options.min_surface_mean_ratio,
+                max_condition=options.max_surface_condition,
+                max_geometry_error_relative=(
+                    options.max_surface_geometry_error_relative
+                ),
+                max_faces=options.max_surface_faces,
+                smoothing_steps=options.surface_smoothing_steps,
             ),
         )
         before = validate_mesh(
@@ -382,7 +406,7 @@ def _finish_output(
     report.post_surface_faces = int(len(output.F))
     report.pre_refine_validation = before
 
-    levels = int(uniform_refine_levels)
+    levels = int(options.uniform_refine_levels)
     if levels < 0:
         raise ValueError("uniform_refine_levels 不能为负数")
 
@@ -408,6 +432,104 @@ def _finish_output(
         }
     require_valid(report.output_validation, "post_refine")
     return output
+
+
+def _try_preserve_valid_solid(
+    mesh: ObjMesh,
+    report: RepairRunReport,
+    options: _FinishOptions,
+) -> ObjMesh | None:
+    """合法实体无需布尔重建时，复制网格并锁定原始边界。"""
+
+    validation = validate_mesh(
+        mesh,
+        require_volume=True,
+        check_self_intersections=True,
+    )
+    if not bool(validation["success"]):
+        return None
+
+    output = ObjMesh(
+        mesh.V.copy(),
+        mesh.F.copy(),
+        mesh.face_object.copy(),
+        mesh.face_group.copy(),
+        mesh.face_material.copy(),
+    )
+    output = _finish_output(
+        output,
+        report,
+        require_volume=True,
+        options=options,
+    )
+    if options.quality_surface_remesh:
+        report.warnings.append(
+            "输入已经是合法闭合实体，已跳过布尔重建；"
+            "表面三角形已在原平面和特征边约束内重剖分。"
+        )
+    else:
+        report.warnings.append(
+            "输入已经是合法闭合实体，已跳过修复和布尔重建，"
+            "以锁定原始边界。"
+        )
+    return output
+
+
+def _finish_non_solid_output(
+    parts: list[ObjMesh],
+    report: RepairRunReport,
+    mode: str,
+    options: _FinishOptions,
+) -> ObjMesh:
+    """合并非实体分件，并完成输出验收。"""
+
+    output = _finish_output(
+        combine_parts(parts),
+        report,
+        require_volume=False,
+        options=options,
+    )
+    if mode == "surface":
+        report.warnings.append(
+            "surface 模式允许边界，不判断开放曲面的实体内外。"
+        )
+        report.warnings.append(
+            "surface 模式不执行开放曲面的精确自交切分。"
+        )
+    return output
+
+
+def _build_solid_output(
+    parts: list[ObjMesh],
+    report: RepairRunReport,
+    *,
+    approximate_rebuild: bool,
+    rebuild_resolution: int,
+    options: _FinishOptions,
+) -> ObjMesh:
+    """优先精确合并实体，失败后按用户选择决定是否近似重建。"""
+
+    try:
+        output = _union_parts(parts)
+    except (RuntimeError, ValueError) as exc:
+        if not approximate_rebuild:
+            raise RuntimeError(
+                f"精确实体合并失败：{exc}。如允许改变几何，"
+                "可开启 approximate_rebuild。"
+            ) from exc
+
+        output = _rebuild_watertight(combine_parts(parts), rebuild_resolution)
+        report.approximate_rebuild = True
+        report.warnings.append(
+            "已使用近似重建，输出顶点不再与输入一一对应。"
+        )
+
+    return _finish_output(
+        output,
+        report,
+        require_volume=True,
+        options=options,
+    )
 
 
 def repair_mesh_data(
@@ -438,6 +560,19 @@ def repair_mesh_data(
     if pre_union_snap_relative < 0.0:
         raise ValueError("pre_union_snap_rel 不能为负数")
 
+    finish_options = _FinishOptions(
+        uniform_refine_levels=uniform_refine_levels,
+        quality_surface_remesh=quality_surface_remesh,
+        surface_target_size=surface_target_size,
+        min_surface_angle=min_surface_angle,
+        min_surface_mean_ratio=min_surface_mean_ratio,
+        max_surface_condition=max_surface_condition,
+        max_surface_geometry_error_relative=(
+            max_surface_geometry_error_relative
+        ),
+        max_surface_faces=max_surface_faces,
+        surface_smoothing_steps=surface_smoothing_steps,
+    )
     eps_v_abs = normalize_eps(eps_v, mesh.V, eps_mode)
     report = RepairRunReport(
         mode=mode,
@@ -456,45 +591,12 @@ def repair_mesh_data(
         and uniform_refine_levels == 0
     )
     if mode == "solid" and preserve_input_boundary:
-        input_validation = validate_mesh(
+        output = _try_preserve_valid_solid(
             mesh,
-            require_volume=True,
-            check_self_intersections=True,
+            report,
+            finish_options,
         )
-        if bool(input_validation["success"]):
-            output = ObjMesh(
-                mesh.V.copy(),
-                mesh.F.copy(),
-                mesh.face_object.copy(),
-                mesh.face_group.copy(),
-                mesh.face_material.copy(),
-            )
-            output = _finish_output(
-                output,
-                report,
-                require_volume=True,
-                uniform_refine_levels=uniform_refine_levels,
-                quality_surface_remesh=quality_surface_remesh,
-                surface_target_size=surface_target_size,
-                min_surface_angle=min_surface_angle,
-                min_surface_mean_ratio=min_surface_mean_ratio,
-                max_surface_condition=max_surface_condition,
-                max_surface_geometry_error_relative=(
-                    max_surface_geometry_error_relative
-                ),
-                max_surface_faces=max_surface_faces,
-                surface_smoothing_steps=surface_smoothing_steps,
-            )
-            if quality_surface_remesh:
-                report.warnings.append(
-                    "输入已经是合法闭合实体，已跳过布尔重建；"
-                    "表面三角形已在原平面和特征边约束内重剖分。"
-                )
-            else:
-                report.warnings.append(
-                    "输入已经是合法闭合实体，已跳过修复和布尔重建，"
-                    "以锁定原始边界。"
-                )
+        if output is not None:
             report.status = "success"
             return output, report
 
@@ -516,58 +618,21 @@ def repair_mesh_data(
     )
 
     if mode in {"assembly", "surface"}:
-        output = combine_parts(parts)
-        output = _finish_output(
-            output,
+        output = _finish_non_solid_output(
+            parts,
             report,
-            require_volume=False,
-            uniform_refine_levels=uniform_refine_levels,
-            quality_surface_remesh=quality_surface_remesh,
-            surface_target_size=surface_target_size,
-            min_surface_angle=min_surface_angle,
-            min_surface_mean_ratio=min_surface_mean_ratio,
-            max_surface_condition=max_surface_condition,
-            max_surface_geometry_error_relative=(
-                max_surface_geometry_error_relative
-            ),
-            max_surface_faces=max_surface_faces,
-            surface_smoothing_steps=surface_smoothing_steps,
+            mode,
+            finish_options,
         )
-        report.warnings.append(
-            "surface 模式允许边界，不判断开放曲面的实体内外。"
-        )
-        report.warnings.append("surface 模式不执行开放曲面的精确自交切分。")
         report.status = "success"
         return output, report
 
-    try:
-        output = _union_parts(parts)
-    except (RuntimeError, ValueError) as exc:
-        if not approximate_rebuild:
-            raise RuntimeError(
-                f"精确实体合并失败：{exc}。如允许改变几何，"
-                "可开启 approximate_rebuild。"
-            ) from exc
-
-        output = _rebuild_watertight(combine_parts(parts), rebuild_resolution)
-        report.approximate_rebuild = True
-        report.warnings.append(
-            "已使用近似重建，输出顶点不再与输入一一对应。"
-        )
-
-    output = _finish_output(
-        output,
+    output = _build_solid_output(
+        parts,
         report,
-        require_volume=True,
-        uniform_refine_levels=uniform_refine_levels,
-        quality_surface_remesh=quality_surface_remesh,
-        surface_target_size=surface_target_size,
-        min_surface_angle=min_surface_angle,
-        min_surface_mean_ratio=min_surface_mean_ratio,
-        max_surface_condition=max_surface_condition,
-        max_surface_geometry_error_relative=max_surface_geometry_error_relative,
-        max_surface_faces=max_surface_faces,
-        surface_smoothing_steps=surface_smoothing_steps,
+        approximate_rebuild=approximate_rebuild,
+        rebuild_resolution=rebuild_resolution,
+        options=finish_options,
     )
     report.status = "success"
     return output, report
