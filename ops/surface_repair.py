@@ -265,6 +265,32 @@ def fill_small_holes(mesh: Mesh, max_edges: int = 4) -> int:
     return len(new_faces)
 
 
+def _repair_labels(
+    part: ObjMesh,
+    face_count: int,
+    *,
+    preserve_face_order: bool,
+) -> tuple[list[str], list[str], list[str]]:
+    """面顺序未变时保留原标签，否则只继承无歧义的统一标签。"""
+
+    if preserve_face_order:
+        return (
+            part.face_object.copy(),
+            part.face_group.copy(),
+            part.face_material.copy(),
+        )
+
+    def repeat_uniform(values: list[str], fallback: str) -> list[str]:
+        label = values[0] if values and len(set(values)) == 1 else fallback
+        return [label] * face_count
+
+    return (
+        repeat_uniform(part.face_object, "part"),
+        repeat_uniform(part.face_group, "repaired"),
+        repeat_uniform(part.face_material, ""),
+    )
+
+
 def repair_surface_part(
     part: ObjMesh,
     *,
@@ -286,22 +312,43 @@ def repair_surface_part(
     flipped += orient_faces(mesh.F)
     holes_added = fill_small_holes(mesh, max_hole_edges) if fill_holes else 0
 
-    remove_degenerate_faces(mesh, area_eps=area_threshold_from_mesh(mesh))
-    remove_duplicate_faces(mesh)
+    late_degenerate_removed = remove_degenerate_faces(
+        mesh,
+        area_eps=area_threshold_from_mesh(mesh),
+    )
+    late_duplicate_removed = remove_duplicate_faces(mesh)
     compact_vertices(mesh)
 
-    object_name = part.face_object[0] if part.face_object else "part"
+    preserve_face_order = not any(
+        (
+            cleanup.degenerate_removed,
+            cleanup.duplicate_removed,
+            t_junction_faces,
+            holes_added,
+            late_degenerate_removed,
+            late_duplicate_removed,
+        )
+    )
+    objects, groups, materials = _repair_labels(
+        part,
+        len(mesh.F),
+        preserve_face_order=preserve_face_order,
+    )
     output = ObjMesh(
         mesh.V,
         mesh.F,
-        face_object=[object_name] * len(mesh.F),
-        face_group=["repaired"] * len(mesh.F),
-        face_material=[""] * len(mesh.F),
+        face_object=objects,
+        face_group=groups,
+        face_material=materials,
     )
     report = {
         "merged_vertices": int(cleanup.merged_vertices),
-        "removed_degenerate_faces": int(cleanup.degenerate_removed),
-        "removed_duplicate_faces": int(cleanup.duplicate_removed),
+        "removed_degenerate_faces": int(
+            cleanup.degenerate_removed + late_degenerate_removed
+        ),
+        "removed_duplicate_faces": int(
+            cleanup.duplicate_removed + late_duplicate_removed
+        ),
         "flipped_faces": int(flipped),
         "split_t_junction_faces": int(t_junction_faces),
         "split_vertices": int(split_vertices),
