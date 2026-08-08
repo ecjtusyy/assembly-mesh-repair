@@ -40,6 +40,20 @@ def _as_vertices(V: np.ndarray) -> np.ndarray:
     return vertices
 
 
+def _validate_face_indices(faces: np.ndarray, vertex_count: int) -> None:
+    """检查面索引是否落在顶点数组范围内。"""
+    if len(faces) == 0:
+        return
+
+    min_index = int(faces.min())
+    max_index = int(faces.max())
+    if min_index < 0 or max_index >= vertex_count:
+        raise ValueError(
+            f"F 中存在越界顶点索引：最小值 {min_index}，最大值 {max_index}，"
+            f"顶点数 {vertex_count}"
+        )
+
+
 def _edge_key(u: int, v: int) -> Edge:
     """把有向边 u-v 统一成无向边 key，方便统计同一条边出现次数。"""
     a, b = int(u), int(v)
@@ -143,6 +157,7 @@ def count_degenerate_faces(
     """
     vertices = _as_vertices(V)
     faces = _as_faces(F)
+    _validate_face_indices(faces, len(vertices))
 
     eps_area = float(eps_area)
     count = 0
@@ -301,6 +316,7 @@ def topology_summary(V: np.ndarray, F: np.ndarray) -> dict[str, object]:
     """
     vertices = _as_vertices(V)
     faces = _as_faces(F)
+    _validate_face_indices(faces, len(vertices))
 
     edge_faces = build_edge_faces(faces)
     boundary_edges, nonmanifold_edges, max_edge_incidence = _classify_edges(edge_faces)

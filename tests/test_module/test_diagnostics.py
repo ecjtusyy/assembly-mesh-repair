@@ -225,3 +225,24 @@ def test_nan_vertex_raises_value_error() -> None:
 
     with pytest.raises(ValueError, match="NaN 或 Inf"):
         topology_summary(V, F)
+
+
+@pytest.mark.parametrize("bad_index", [-1, 3])
+def test_topology_summary_rejects_out_of_range_face_index(bad_index: int) -> None:
+    V = np.array([
+        [0.0, 0.0, 0.0],
+        [1.0, 0.0, 0.0],
+        [0.0, 1.0, 0.0],
+    ])
+    F = np.array([[0, 1, bad_index]], dtype=int)
+
+    with pytest.raises(ValueError, match="F 中存在越界顶点索引"):
+        topology_summary(V, F)
+
+
+def test_degenerate_face_check_rejects_out_of_range_face_index() -> None:
+    V = np.zeros((3, 3), dtype=float)
+    F = np.array([[0, 1, 3]], dtype=int)
+
+    with pytest.raises(ValueError, match="F 中存在越界顶点索引"):
+        count_degenerate_faces(V, F)
